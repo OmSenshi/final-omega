@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e1a">
+<title>Final Omega</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center}
+
+/* ── Fundo animado: orbs flutuantes ── */
+.bg{position:fixed;inset:0;z-index:0;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.35;animation:float 20s ease-in-out infinite}
+.orb:nth-child(1){width:500px;height:500px;background:radial-gradient(circle,#1a3a8f,transparent 70%);top:-10%;left:-10%;animation-duration:22s}
+.orb:nth-child(2){width:400px;height:400px;background:radial-gradient(circle,#0f6e56,transparent 70%);bottom:-15%;right:-5%;animation-duration:18s;animation-delay:-5s}
+.orb:nth-child(3){width:300px;height:300px;background:radial-gradient(circle,#534ab7,transparent 70%);top:40%;left:60%;animation-duration:25s;animation-delay:-10s}
+@keyframes float{
+  0%,100%{transform:translate(0,0) scale(1)}
+  25%{transform:translate(40px,-30px) scale(1.05)}
+  50%{transform:translate(-20px,50px) scale(.95)}
+  75%{transform:translate(30px,20px) scale(1.02)}
+}
+
+/* ── Noise overlay ── */
+.bg::after{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");opacity:.6;pointer-events:none}
+
+/* ── Card ── */
+.card{position:relative;z-index:1;width:380px;max-width:90vw;background:rgba(14,18,32,.85);border:1px solid rgba(255,255,255,.06);border-radius:24px;padding:48px 36px 36px;backdrop-filter:blur(40px);box-shadow:0 24px 80px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.03) inset;animation:cardIn .8s cubic-bezier(.16,1,.3,1) both}
+@keyframes cardIn{from{opacity:0;transform:translateY(30px) scale(.96)}to{opacity:1;transform:none}}
+
+/* ── Logo ── */
+.logo{text-align:center;margin-bottom:32px}
+.logo-text{font-size:32px;font-weight:900;letter-spacing:8px;background:linear-gradient(135deg,#5a9cf5 0%,#a78bfa 50%,#5a9cf5 100%);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 4s ease-in-out infinite}
+@keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.logo-sub{font-size:11px;letter-spacing:4px;color:rgba(255,255,255,.3);text-transform:uppercase;margin-top:4px;font-weight:300}
+
+/* ── Form ── */
+.field{margin-bottom:20px;position:relative}
+.field label{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,.4);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+.field input{width:100%;padding:14px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;font-size:15px;color:#e0e4ef;font-family:'Outfit',sans-serif;outline:none;transition:all .3s}
+.field input:focus{border-color:rgba(90,156,245,.4);background:rgba(255,255,255,.06);box-shadow:0 0 0 3px rgba(90,156,245,.08)}
+.field input::placeholder{color:rgba(255,255,255,.15)}
+
+.btn-login{width:100%;padding:15px;border:none;border-radius:12px;font-size:15px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:1px;cursor:pointer;transition:all .3s;background:linear-gradient(135deg,#1a5fd4,#534ab7);color:#fff;box-shadow:0 4px 20px rgba(26,95,212,.3)}
+.btn-login:hover{box-shadow:0 6px 30px rgba(26,95,212,.45);transform:translateY(-1px)}
+.btn-login:active{transform:translateY(0) scale(.98)}
+.btn-login:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.error{margin-top:14px;font-size:13px;color:#e07065;text-align:center;min-height:20px;opacity:0;transition:opacity .3s}
+.error.show{opacity:1}
+
+/* ── Versão ── */
+.version{text-align:center;margin-top:24px;font-size:10px;color:rgba(255,255,255,.15);letter-spacing:2px}
+
+/* ── Responsivo ── */
+@media(max-width:440px){
+  .card{padding:36px 24px 28px;border-radius:20px}
+  .logo-text{font-size:26px;letter-spacing:6px}
+}
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="orb"></div>
+  <div class="orb"></div>
+  <div class="orb"></div>
+</div>
+
+<div class="card">
+  <div class="logo">
+    <div class="logo-text">OMEGA</div>
+    <div class="logo-sub">Painel de Controle</div>
+  </div>
+
+  <div class="field">
+    <label>Senha de acesso</label>
+    <input type="password" id="pw" placeholder="Digite a senha" autofocus autocomplete="current-password">
+  </div>
+
+  <button class="btn-login" id="btn" onclick="doLogin()">Entrar</button>
+
+  <div class="error" id="err"></div>
+  <div class="version">FINAL OMEGA v3.1</div>
+</div>
+
+<script>
+const pw = document.getElementById('pw');
+const btn = document.getElementById('btn');
+const err = document.getElementById('err');
+
+pw.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  const token = pw.value.trim();
+  if (!token) { showErr('Digite a senha'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  err.classList.remove('show');
+
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const j = await r.json();
+    if (j.success) {
+      window.location.href = '/';
+    } else {
+      showErr(j.error || 'Senha incorreta');
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  } catch(e) {
+    showErr('Erro de conexao');
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+function showErr(msg) {
+  err.textContent = msg;
+  err.classList.add('show');
+}
+
+// Se já está autenticado, redireciona
+fetch('/api/auth/check').then(r=>r.json()).then(j=>{ if(j.authed) window.location.href='/'; });
+</script>
+</body>
+</html>
