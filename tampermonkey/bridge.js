@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.1 (Sunshine Edition)
-// Anti-Atropelamento (waitForVisible), DigitarCharAChar Nativo, Arrendamento Fallback
+// bridge.js — Final Omega v7.2 (Sunshine Edition)
+// Human-Typing (Mascara CPF/CNPJ), Verificar Real, Arrendamento Refinado
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -292,7 +292,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR (Vue.js Hack)
+  // MÁQUINA DE ESTADOS GOV.BR
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
@@ -441,7 +441,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // INICIAR PEDIDO (O "Leitor Inteligente de Toasts")
+  // INICIAR PEDIDO 
   // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
@@ -681,7 +681,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // VEÍCULOS E ARRENDAMENTO (DelayEspecial e Fallback no Dropdown)
+  // VEÍCULOS E ARRENDAMENTO
   // ══════════════════════════════════════════════════════════════
   async function processarInclusaoVeiculo(placa,renavam){
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
@@ -693,13 +693,9 @@
     cp.removeAttribute('disabled');
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
     
-    // Proteção contra a Máscara da ANTT que apaga o texto rápido
     await new Promise(function(resolve){
-        if(U && U.digitarCharAChar) {
-            U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
-        } else {
-            typeSlowly(cp, pLimpa, 80).then(resolve);
-        }
+        if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
+        else typeSlowly(cp, pLimpa, 80).then(resolve);
     });
 
     var cr=getVisible('#Renavam');cr.removeAttribute('disabled');cr.value=renavam;
@@ -789,7 +785,6 @@
                 enviarStatus('erro_fatal', 'Falha ao acessar frota: ' + resultado.texto); limparEstado(); return;
             }
         }
-        setTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
     if (formAberto) { await processarVeiculos(task); }
@@ -800,12 +795,10 @@
     var jq = unsafeWindow.jQuery || unsafeWindow.$;
     var cpfArr = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,''); 
     
-    // 1. ESPERA E SELECIONA DROPDOWN (Com Fallback)
+    // 1. ESPERA E SELECIONA DROPDOWN
     var sel = await waitForVisible('#CPFCNPJArrendanteTransportador', 10000);
     if (sel) {
-        // Aguarda carregar opções via Ajax
         for(var w=0; w<30; w++){ if(sel.options.length>1) break; await delay(500); }
-        
         var selecionou = false;
         for(var i=0; i<sel.options.length; i++){
             if(sel.options[i].value.replace(/\D/g,'')===cpfArr || sel.options[i].text.replace(/\D/g,'')===cpfArr){
@@ -814,8 +807,6 @@
                 selecionou = true; break;
             }
         }
-        
-        // O PULo DO GATO: Se for CPF terceiro, escolhe o primeiro valido pra podermos substituir o HTML visualmente!
         if(!selecionou){
             for(var i=0; i<sel.options.length; i++){
                 if(sel.options[i].text && sel.options[i].text.toLowerCase().indexOf('selecione') === -1){
@@ -826,9 +817,73 @@
             }
         }
     }
-    await delay(1500); // Dá tempo para a UI atualizar
+    await delay(1500); 
 
-    // 2. SUBSTITUICAO MAGICA DO HTML
+    // 2. DIGITACAO DA PLACA E RENAVAM (Anti-Máscara)
+    var cp = await waitForVisible('#Placa', 5000);
+    if(cp){
+        cp.removeAttribute('disabled');
+        var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
+            else typeSlowly(cp, pLimpa, 80).then(resolve);
+        });
+        cp.dispatchEvent(new Event('blur',{bubbles:true}));
+    }
+    await delay(300);
+
+    var cr = document.getElementById('Renavam');
+    if(cr){
+        cr.removeAttribute('disabled'); cr.value = arr.renavam||'';
+        cr.dispatchEvent(new Event('input',{bubbles:true}));
+        cr.dispatchEvent(new Event('change',{bubbles:true}));
+        cr.dispatchEvent(new Event('blur',{bubbles:true}));
+    }
+    await delay(500);
+
+    // 3. CLICAR EM VERIFICAR E AGUARDAR O SISTEMA
+    enviarStatus('running','Verificando...', {step:'arrendamento_verificar'});
+    var bv = document.getElementById('verificar');
+    if(bv) {
+        bv.click();
+        var waitLimit = 0;
+        while(waitLimit < 30) {
+            var di = document.getElementById('DataInicio');
+            var uiBlock = document.querySelector('.blockUI');
+            // Espera o blockUI sumir E o campo DataInicio ser habilitado
+            if (di && !di.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
+            await delay(1000);
+            waitLimit++;
+        }
+    }
+    await delay(1000); // Pausa extra pós-verificação
+
+    // 4. DATAS E CAIXINHAS
+    var hj=new Date();var di=String(hj.getDate()).padStart(2,'0')+'/'+String(hj.getMonth()+1).padStart(2,'0')+'/'+hj.getFullYear();var fim=new Date(hj);fim.setFullYear(fim.getFullYear()+1);var df=String(fim.getDate()).padStart(2,'0')+'/'+String(fim.getMonth()+1).padStart(2,'0')+'/'+fim.getFullYear();
+    if(U){U.injetarData('DataInicio',di);U.injetarData('DataFim',df);}await delay(500);
+    
+    var c1=document.getElementById('ExisteContrato'),c2=document.getElementById('InformacoesVerdadeiras');
+    if(c1){c1.checked=true;c1.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c1).trigger('change');}
+    if(c2){c2.checked=true;c2.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c2).trigger('change');}await delay(500);
+    
+    // 5. PREENCHER ARRENDATÁRIO (Com digitação humana p/ ativar a máscara da ANTT)
+    var targetDoc = getTargetDoc(task);
+    var cpfArrendatario = (arr.cpf_arrendatario || targetDoc || '').replace(/\D/g,'');
+    if(cpfArrendatario){
+        var af = document.getElementById('CPFCNPJArrendatario') || document.querySelector('input[name*="CpfCnpjArrendatario"]');
+        if(af){
+            af.removeAttribute('disabled');
+            af.focus();
+            await new Promise(function(resolve){
+                if(U && U.digitarCharAChar) U.digitarCharAChar(af, cpfArrendatario, { delay:60, onDone: resolve });
+                else typeSlowly(af, cpfArrendatario, 60).then(resolve);
+            });
+            af.dispatchEvent(new Event('blur',{bubbles:true}));
+        }
+    }
+    await delay(1000);
+
+    // 6. SUBSTITUICAO MAGICA DO HTML
     var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
     if (cpfArr || nomeArrendante) {
         enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
@@ -856,58 +911,10 @@
     }
     await delay(1000);
 
-    // 3. DIGITACAO DE PLACA (Anti-Máscara)
-    var cp = await waitForVisible('#Placa', 5000);
-    if(cp){
-        cp.removeAttribute('disabled');
-        var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
-            else typeSlowly(cp, pLimpa, 80).then(resolve);
-        });
-    }
-    
-    // 4. DIGITACAO DE RENAVAM
-    var cr = document.getElementById('Renavam');
-    if(cr){
-        cr.removeAttribute('disabled'); cr.value = arr.renavam||'';
-        cr.dispatchEvent(new Event('input',{bubbles:true}));
-        cr.dispatchEvent(new Event('change',{bubbles:true}));
-        cr.dispatchEvent(new Event('blur',{bubbles:true}));
-    }
-    await delay(500);
-
-    // 5. VERIFICACAO VIA AJAX
-    enviarStatus('running','Verificando...', {step:'arrendamento_verificar'});
-    var bv = document.getElementById('verificar');
-    if(jq) {
-        jq.ajax({
-            type:'GET',url:'/ContratoArrendamento/verificarVeiculo',cache:false,
-            data:{placa:cp.value.toUpperCase(),renavam:cr.value,cpfCnpjProprietario:document.getElementById('CPFCNPJArrendante').value},
-            success: function(){ if(bv) bv.click(); },
-            error: function(){ if(bv) bv.click(); }
-        });
-    } else if(bv){ bv.click(); }
-    await delay(3000);
-
-    // 6. DATAS E CAIXINHAS
-    var hj=new Date();var di=String(hj.getDate()).padStart(2,'0')+'/'+String(hj.getMonth()+1).padStart(2,'0')+'/'+hj.getFullYear();var fim=new Date(hj);fim.setFullYear(fim.getFullYear()+1);var df=String(fim.getDate()).padStart(2,'0')+'/'+String(fim.getMonth()+1).padStart(2,'0')+'/'+fim.getFullYear();
-    if(U){U.injetarData('DataInicio',di);U.injetarData('DataFim',df);}await delay(500);
-    
-    var c1=document.getElementById('ExisteContrato'),c2=document.getElementById('InformacoesVerdadeiras');
-    if(c1){c1.checked=true;c1.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c1).trigger('change');}
-    if(c2){c2.checked=true;c2.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c2).trigger('change');}await delay(500);
-    
-    var targetDoc = getTargetDoc(task);
-    var cpfArrendatario = (arr.cpf_arrendatario || targetDoc || '').replace(/\D/g,'');
-    if(cpfArrendatario){var af=document.getElementById('CPFCNPJArrendatario')||document.querySelector('input[name*="CpfCnpjArrendatario"]');if(af){af.removeAttribute('disabled');af.value=cpfArrendatario;af.dispatchEvent(new Event('change',{bubbles:true}));af.dispatchEvent(new Event('blur',{bubbles:true}));}}await delay(500);
-
     // 7. SALVAR
     enviarStatus('running','Salvando...',{step:'arrendamento_salvar'}); var btnS=document.querySelector('#btnSalvar,.btn-salvarContrato');if(btnS)btnS.click();await delay(3000);
-    
     try{
       await waitForURL('ContratoArrendamento/Index',15000);enviarStatus('done','Arrendamento OK!');
-      
       var returnUrl=gmGet('omega_return_url','');
       if (returnUrl) {
           gmSet('omega_return_url','');
