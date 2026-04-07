@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Omega WS Proxy</title></head>
+<body>
+<script>
+// iframe.html — Omega WebSocket Proxy
+// Hospedado em omhk.com.br, embutido como iframe invisível no Gov.br.
+// Comunica com o bridge.js via postMessage.
+
+var ws = null;
+var parentOrigin = '*'; // Aceita qualquer origin (o Gov.br muda de domínio)
+
+window.addEventListener('message', function(evt) {
+  var msg;
+  try { msg = (typeof evt.data === 'string') ? JSON.parse(evt.data) : evt.data; } catch(e) { return; }
+
+  // ── Comando: conectar ──
+  if (msg.action === 'ws_connect') {
+    if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+
+    var url = msg.url || '';
+    var token = msg.token || '';
+    var deviceId = msg.deviceId || '';
+    var deviceName = msg.name || 'Dispositivo';
+
+    if (!url) { reply({ action: 'ws_error', error: 'URL vazia' }); return; }
+
+    // Monta URL com token
+    var fullUrl = url + (token ? ((url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token)) : '');
+
+    try { ws = new WebSocket(fullUrl); } catch(e) {
+      reply({ action: 'ws_error', error: 'WebSocket invalido: ' + e.message });
+      return;
+    }
+
+    ws.onopen = function() {
+      // Envia registro idêntico ao da ANTT
+      ws.send(JSON.stringify({ type: 'register', deviceId: deviceId, name: deviceName }));
+      reply({ action: 'ws_open' });
+    };
+
+    ws.onmessage = function(evt) {
+      reply({ action: 'ws_message', data: evt.data });
+    };
+
+    ws.onclose = function(evt) {
+      reply({ action: 'ws_close', code: evt.code, reason: evt.reason || '' });
+      ws = null;
+    };
+
+    ws.onerror = function() {
+      reply({ action: 'ws_error', error: 'Conexao falhou' });
+    };
+
+    return;
+  }
+
+  // ── Comando: enviar dados pelo WS ──
+  if (msg.action === 'ws_send') {
+    if (ws && ws.readyState === 1) {
+      try { ws.send(typeof msg.data === 'string' ? msg.data : JSON.stringify(msg.data)); } catch(e) {}
+    }
+    return;
+  }
+
+  // ── Comando: fechar WS ──
+  if (msg.action === 'ws_close_cmd') {
+    if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+    return;
+  }
+});
+
+function reply(obj) {
+  try { window.parent.postMessage(JSON.stringify(obj), parentOrigin); } catch(e) {}
+}
+
+// Avisa o parent que o iframe carregou
+reply({ action: 'iframe_ready' });
+</script>
+</body>
+</html>

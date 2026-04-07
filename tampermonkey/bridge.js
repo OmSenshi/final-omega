@@ -209,7 +209,8 @@
           paused=true;
           if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}
           if(ws){try{ws.close();}catch(e){}ws=null;}
-          connected=false;
+          if(govIframe){try{govIframe.contentWindow.postMessage(JSON.stringify({action:'ws_close_cmd'}),'*');}catch(e){}try{govIframe.remove();}catch(e){}govIframe=null;}
+          connected=false;iframeReady=false;
           gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name','');
           VPS_URL='';VPS_TOKEN='';DEVICE_NAME='';
           govRetryCount=0;
@@ -226,10 +227,23 @@
       el.textContent=texto;
     }
 
-    // ── WebSocket específico do Gov.br (não usa conectar() global pra evitar conflito) ──
+    // ══════════════════════════════════════════════════════════════
+    // WEBSOCKET VIA IFRAME (bypass CSP do Gov.br)
+    // O iframe roda no domínio omhk.com.br onde WebSocket é permitido.
+    // Comunicação: bridge.js ←→ postMessage ←→ iframe.html ←→ WebSocket ←→ VPS
+    // ══════════════════════════════════════════════════════════════
+
+    var govIframe = null;
+    var iframeReady = false;
+
+    function getIframeSrc(){
+      // Converte wss://omhk.com.br/ws → https://omhk.com.br/iframe.html
+      var base = VPS_URL.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '');
+      return base + '/iframe.html';
+    }
+
     function conectarGov(){
       if(paused||!VPS_URL)return;
-      if(ws){try{ws.close();}catch(e){}ws=null;}
 
       govRetryCount++;
       if(govRetryCount>GOV_MAX_RETRIES){
@@ -238,48 +252,109 @@
         return;
       }
 
-      log('Gov.br: tentativa '+govRetryCount+'/'+GOV_MAX_RETRIES,'ok');
-      atualizarGovStatus('Conectando... ('+govRetryCount+'/'+GOV_MAX_RETRIES+')','info');
+      log('Gov.br: iframe tentativa '+govRetryCount+'/'+GOV_MAX_RETRIES,'ok');
+      atualizarGovStatus('Carregando iframe... ('+govRetryCount+'/'+GOV_MAX_RETRIES+')','info');
 
-      var fullUrl=VPS_URL+(VPS_TOKEN?((VPS_URL.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
-      try{ws=new WebSocket(fullUrl);}catch(e){
-        atualizarGovStatus('URL invalida','err');
-        log('Gov.br: URL invalida '+e.message,'err');
-        return;
+      // Remove iframe anterior se existir
+      if(govIframe){try{govIframe.remove();}catch(e){}govIframe=null;}
+      iframeReady=false;
+
+      // Cria iframe invisível apontando pro domínio do VPS
+      govIframe=document.createElement('iframe');
+      govIframe.id='omega-ws-iframe';
+      govIframe.src=getIframeSrc();
+      govIframe.style.cssText='display:none;width:0;height:0;border:0;position:absolute';
+      document.body.appendChild(govIframe);
+
+      // Timeout pra iframe carregar
+      var iframeTimeout=setTimeout(function(){
+        if(!iframeReady){
+          log('Gov.br: iframe timeout','err');
+          atualizarGovStatus('Iframe nao carregou. Retry...','err');
+          if(!paused&&govRetryCount<GOV_MAX_RETRIES){
+            reconnectTimer=setTimeout(function(){nextBackoff();conectarGov();},reconnectDelay);
+          }
+        }
+      },15000);
+
+      // Escuta mensagens do iframe
+      function onIframeMessage(evt){
+        var msg;
+        try{msg=(typeof evt.data==='string')?JSON.parse(evt.data):evt.data;}catch(e){return;}
+        if(!msg.action)return;
+
+        switch(msg.action){
+          case 'iframe_ready':
+            iframeReady=true;
+            clearTimeout(iframeTimeout);
+            log('Gov.br: iframe pronto, conectando WS...','ok');
+            atualizarGovStatus('Conectando WebSocket...','info');
+            // Gera deviceId se necessário
+            if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
+            // Manda comando de conectar pro iframe
+            govIframe.contentWindow.postMessage(JSON.stringify({
+              action:'ws_connect',
+              url:VPS_URL,
+              token:VPS_TOKEN,
+              deviceId:DEVICE_ID,
+              name:(DEVICE_NAME||'Dispositivo')+' (Gov.br)'
+            }),'*');
+            break;
+
+          case 'ws_open':
+            connected=true;govRetryCount=0;resetBackoff();
+            atualizarGovStatus('Conectado ✓ — Dispositivo livre','ok');
+            log('Gov.br: WS conectado via iframe','ok');
+            break;
+
+          case 'ws_message':
+            // Processa mensagem como se fosse ws.onmessage normal
+            var data;try{data=JSON.parse(msg.data);}catch(e){return;}
+            if(data.type==='registered'){DEVICE_ID=data.deviceId;gmSet('omega_device_id',DEVICE_ID);log('Gov.br: registrado '+DEVICE_ID,'ok');}
+            if(data.type==='task'){receberTarefa(data);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent='Tarefa: '+data.modo;}
+            if(data.type==='stop')pararTarefa();
+            break;
+
+          case 'ws_close':
+            connected=false;
+            if(msg.code===4001){atualizarGovStatus('Token incorreto','err');log('Gov.br: token incorreto','err');return;}
+            if(!paused&&VPS_URL&&govRetryCount<GOV_MAX_RETRIES){
+              var secs=Math.round(reconnectDelay/1000);
+              atualizarGovStatus('Desconectado. Retry '+secs+'s','err');
+              reconnectTimer=setTimeout(function(){nextBackoff();conectarGov();},reconnectDelay);
+            } else if(govRetryCount>=GOV_MAX_RETRIES){
+              atualizarGovStatus('Falha. Clique Resetar.','err');
+            }
+            break;
+
+          case 'ws_error':
+            log('Gov.br: WS erro — '+(msg.error||''),'err');
+            break;
+        }
       }
 
-      ws.onopen=function(){
-        connected=true;govRetryCount=0;resetBackoff();
-        // Registro idêntico ao da ANTT
-        if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
-        ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME+' (Gov.br)'}));
-        atualizarGovStatus('Conectado ✓ — Dispositivo livre','ok');
-        log('Gov.br: conectado e registrado','ok');
-      };
-
-      ws.onmessage=function(evt){
-        var msg;try{msg=JSON.parse(evt.data);}catch{return;}
-        if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);log('Gov.br: registrado '+DEVICE_ID,'ok');}
-        if(msg.type==='task'){receberTarefa(msg);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent='Tarefa: '+msg.modo;}
-        if(msg.type==='stop')pararTarefa();
-      };
-
-      ws.onclose=function(evt){
-        connected=false;
-        if(evt.code===4001){atualizarGovStatus('Token incorreto','err');log('Gov.br: token incorreto','err');return;}
-        if(!paused&&VPS_URL&&govRetryCount<GOV_MAX_RETRIES){
-          var secs=Math.round(reconnectDelay/1000);
-          atualizarGovStatus('Desconectado. Retry em '+secs+'s ('+govRetryCount+'/'+GOV_MAX_RETRIES+')','err');
-          reconnectTimer=setTimeout(function(){nextBackoff();conectarGov();},reconnectDelay);
-        } else if(govRetryCount>=GOV_MAX_RETRIES){
-          atualizarGovStatus('Falha. Clique Resetar pra reconfigurar.','err');
-        }
-      };
-
-      ws.onerror=function(){
-        log('Gov.br: erro WS','err');
-      };
+      // Remove listener anterior pra evitar duplicata
+      window.removeEventListener('message',window._omegaIframeListener);
+      window._omegaIframeListener=onIframeMessage;
+      window.addEventListener('message',onIframeMessage);
     }
+
+    // Adapta enviarStatus pra usar iframe no Gov.br
+    var _enviarStatusOriginal=enviarStatus;
+    enviarStatus=function(status,message,extra){
+      // No Gov.br, manda via iframe postMessage
+      if(isGovBr&&govIframe&&iframeReady){
+        var payload={type:'status',status:status,message:message||''};
+        if(extra)for(var k in extra)payload[k]=extra[k];
+        try{govIframe.contentWindow.postMessage(JSON.stringify({action:'ws_send',data:payload}),'*');}catch(e){}
+      }
+      // Atualiza UI local
+      if(status==='error'||status==='error_critical')registrarErro(message||'Erro');
+      else errorCount=0;
+      log(message||status,(status==='error'||status==='error_critical')?'err':'ok');
+      // Na ANTT usa o ws direto (fallback)
+      if(!isGovBr)_enviarStatusOriginal(status,message,extra);
+    };
 
     // PRIMEIRO injeta no DOM, DEPOIS conecta
     document.body.appendChild(govPanel);
