@@ -1,4 +1,4 @@
-// core.js — Omega Painel v3.2: UI responsiva + FAB + Bottom Sheet + Toasts
+// core.js — Omega Painel v3.2: UI responsiva + FAB Esquerdo
 (function(){
   if(document.getElementById('antt-helper'))return;
 
@@ -10,11 +10,9 @@
 
   var isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
 
-  // ── CSS ──
   var css = document.createElement('style');
   css.id = 'omega-theme';
   css.textContent = ''
-    // Painel desktop
     +'#antt-helper{'
       +'position:fixed;top:20px;right:20px;z-index:999999;'
       +'background:rgba(14,18,30,0.97);'
@@ -26,7 +24,7 @@
       +'backdrop-filter:blur(20px);'
       +'transition:all 0.3s ease;'
     +'}'
-    // Mobile: bottom sheet
+    +'.om-hidden{opacity:0!important;pointer-events:none!important;transform:scale(0.95)}'
     +'@media(max-width:768px){'
       +'#antt-helper{'
         +'position:fixed!important;bottom:0!important;left:0!important;right:auto!important;top:auto!important;'
@@ -42,7 +40,6 @@
       +'.om-btn{padding:12px 16px!important;font-size:13px!important}'
       +'.om-header{padding:4px 0 8px;margin-bottom:6px}'
     +'}'
-    // FAB (Floating Action Button)
     +'#omega-fab{'
       +'display:none;position:fixed;z-index:999998;'
       +'width:56px;height:56px;border-radius:50%;'
@@ -55,7 +52,6 @@
     +'}'
     +'#omega-fab:active{transform:scale(0.92)}'
     +'#omega-fab.om-fab-connected{background:linear-gradient(135deg,#34a853,#2d8f47);box-shadow:0 4px 20px rgba(52,168,83,0.4)}'
-    // Toast container
     +'#omega-toasts{'
       +'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);'
       +'z-index:999997;display:flex;flex-direction:column-reverse;gap:8px;'
@@ -73,10 +69,8 @@
     +'.om-toast-err{border-left:3px solid #e07065}'
     +'@keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}'
     +'@keyframes toastOut{to{opacity:0;transform:translateY(-10px)}}'
-    // Swipe handle mobile
     +'.om-swipe-handle{width:40px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 8px;display:none}'
     +'@media(max-width:768px){.om-swipe-handle{display:block}}'
-    // Header
     +'.om-header{text-align:center;margin-bottom:10px;cursor:grab;user-select:none}'
     +'.om-header:active{cursor:grabbing}'
     +'.om-logo{font-size:22px;font-weight:800;color:#1a73e8;letter-spacing:4px}'
@@ -84,7 +78,6 @@
     +'.om-close,.om-min{position:absolute;top:14px;cursor:pointer;font-size:15px;color:#555e70;transition:color 0.2s;user-select:none}'
     +'.om-close:hover,.om-min:hover{color:#c8cdd8}'
     +'.om-close{right:16px}.om-min{right:40px}'
-    // Tabs
     +'#omega-tabs{display:grid;gap:4px;margin-bottom:12px}'
     +'#omega-tabs button{padding:8px;border:1px solid rgba(26,115,232,0.2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s;background:rgba(26,115,232,0.06);color:#5a9cf5}'
     +'#omega-tabs button:hover{background:rgba(26,115,232,0.12);border-color:rgba(26,115,232,0.3)}'
@@ -94,7 +87,6 @@
     +'.om-api-status{font-size:10px;color:#555e70;flex:1}'
     +'.om-btn-api{padding:5px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:10px;color:#8a92a6;cursor:pointer;transition:all 0.2s}'
     +'.om-btn-api:hover{background:rgba(255,255,255,0.08);color:#c8cdd8}'
-    // Buttons
     +'.om-btn{padding:9px 16px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;letter-spacing:0.3px}'
     +'.om-btn:active{transform:scale(0.97)}'
     +'.om-btn-blue{background:linear-gradient(135deg,#1a73e8,#1557b0);color:#fff;box-shadow:0 2px 12px rgba(26,115,232,0.25)}'
@@ -106,7 +98,6 @@
     +'.om-btn-full{width:100%}'
     +'.om-btn-list{padding:5px 10px;border:none;border-radius:6px;font-size:11px;cursor:pointer;transition:all 0.2s;font-weight:500}'
     +'.om-btn-del{background:rgba(192,57,43,0.12);color:#e07065;border:1px solid rgba(192,57,43,0.15)}'
-    // Inputs
     +'.om-input{width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:12px;color:#c8cdd8;outline:none;transition:border-color 0.2s;box-sizing:border-box}'
     +'.om-input:focus{border-color:rgba(26,115,232,0.4);background:rgba(255,255,255,0.06)}'
     +'.om-input::placeholder{color:#3a3f4e}'
@@ -135,27 +126,24 @@
     +'.om-vazio{font-size:11px;color:#3a3f4e;text-align:center;padding:20px 0}'
     +'.om-resumo{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:11px;line-height:1.7}'
     +'.om-resumo-label{color:#555e70;font-size:10px}.om-resumo-valor{color:#c8cdd8;font-weight:600}.om-resumo-aleatorio{color:#f0ad4e;font-style:italic}'
-    // Log terminal
     +'.om-log{background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:6px 8px;max-height:140px;overflow-y:auto;font-family:monospace;font-size:10px;color:#8a92a6;line-height:1.6;margin-top:6px}'
     +'.om-log-ok{color:#5ddb7a}.om-log-err{color:#e07065}.om-log-warn{color:#f0ad4e}'
   ;
   document.head.appendChild(css);
 
-  // ── Toast container ──
   var toastContainer = document.createElement('div');
   toastContainer.id = 'omega-toasts';
   document.body.appendChild(toastContainer);
 
-  // ── FAB (Floating Action Button) ──
+  // FAB posicionado à esquerda!
   var fab = document.createElement('button');
   fab.id = 'omega-fab';
   fab.textContent = 'Ω';
   fab.style.display = 'none';
   fab.style.bottom = '20px';
-  fab.style.right = '20px';
+  fab.style.left = '20px'; 
   document.body.appendChild(fab);
 
-  // FAB drag (touch)
   (function(){
     var dragging=false, startX=0, startY=0, fabX=0, fabY=0, moved=false;
     fab.addEventListener('touchstart',function(e){
@@ -178,9 +166,29 @@
       if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }
       dragging=false;
     });
+    // Drag no mouse para desktop
+    fab.addEventListener('mousedown',function(e){
+      dragging=true; moved=false;
+      startX=e.clientX; startY=e.clientY;
+      var r=fab.getBoundingClientRect(); fabX=r.left; fabY=r.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove',function(e){
+      if(!dragging)return;
+      var dx=e.clientX-startX, dy=e.clientY-startY;
+      if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;
+      var nx=fabX+dx, ny=fabY+dy;
+      nx=Math.max(0,Math.min(nx,window.innerWidth-60));
+      ny=Math.max(0,Math.min(ny,window.innerHeight-60));
+      fab.style.left=nx+'px'; fab.style.top=ny+'px';
+      fab.style.right='auto'; fab.style.bottom='auto';
+    });
+    document.addEventListener('mouseup',function(){
+      if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }
+      dragging=false;
+    });
   })();
 
-  // ── Painel principal ──
   var s = document.createElement('div');
   s.id = 'antt-helper';
   s.innerHTML = ''
@@ -200,13 +208,12 @@
     +'</div>';
   document.body.appendChild(s);
 
-  // ── Drag desktop ──
   (function(){
     var handle=document.getElementById('omega-drag-handle'),painel=document.getElementById('antt-helper');
     var dragging=false,offX=0,offY=0;
     handle.addEventListener('mousedown',function(e){
       if(e.target.classList.contains('om-close')||e.target.classList.contains('om-min'))return;
-      if(isMobile)return; // no drag on mobile
+      if(isMobile)return;
       dragging=true;var rect=painel.getBoundingClientRect();offX=e.clientX-rect.left;offY=e.clientY-rect.top;e.preventDefault();
     });
     document.addEventListener('mousemove',function(e){
@@ -224,7 +231,6 @@
     }
   })();
 
-  // ── Tabs ──
   window._OmegaAbas = [];
   unsafeWindow.OmegaAba = function(abaId){
     document.querySelectorAll('#omega-tabs button').forEach(function(btn){
@@ -237,20 +243,11 @@
     try{if(typeof GM_setValue!=='undefined')GM_setValue('omega_aba_ativa',abaId);}catch(e){}
   };
 
-  // ── Minimizar / Expandir (mobile = FAB, desktop = compact) ──
+  // Agora minimizar funciona igual no mobile e no PC (some a tela e mostra a bolinha)
   unsafeWindow.OmegaMinimizar = function(){
     var p=document.getElementById('antt-helper');
-    if(isMobile){
-      p.classList.add('om-hidden');
-      fab.style.display='flex';
-    } else {
-      var tabs=document.getElementById('omega-tabs'),cnt=document.getElementById('omega-content');
-      var hr=p.querySelector('.om-hr'),rod=p.querySelector('.om-rodape'),btn=document.getElementById('omega-minimizar');
-      var min=p.getAttribute('data-minimizado')==='1';
-      var els=[tabs,cnt,hr,rod];
-      if(min){els.forEach(function(el){if(el)el.style.display='';});p.style.width='440px';p.setAttribute('data-minimizado','0');if(btn)btn.textContent='—';}
-      else{els.forEach(function(el){if(el)el.style.display='none';});p.style.width='160px';p.setAttribute('data-minimizado','1');if(btn)btn.textContent='▢';}
-    }
+    p.classList.add('om-hidden');
+    fab.style.display='flex';
   };
 
   unsafeWindow.OmegaExpandir = function(){
@@ -259,7 +256,6 @@
     fab.style.display='none';
   };
 
-  // Mobile: start minimized
   if(isMobile){
     ST(function(){
       var p=document.getElementById('antt-helper');
@@ -268,7 +264,6 @@
     }, 500);
   }
 
-  // ── OmegaUtils ──
   window.OmegaUtils = {
     box: function(el,ok,msg){if(!el)return;el.className='om-box '+(ok?'om-box-ok':'om-box-err');el.innerHTML=msg;},
     clearBox: function(el){if(el){el.className='';el.innerHTML='';}},
@@ -303,14 +298,12 @@
     cepAleatorio: function(estado){var l=this.CEPS[estado]||this.CEPS.MG;return l[Math.floor(Math.random()*l.length)];},
     aguardarElemento: function(seletor,callback,opts){opts=opts||{};var max=opts.maxTentativas||60,ms=opts.intervalo||500,t=0;function ck(){t++;var r=null;if(typeof seletor==='function')r=seletor();else{var el=document.querySelector(seletor);if(el&&el.offsetParent!==null)r=el;}if(r)callback(r);else if(t<max)ST(ck,ms);else if(opts.onTimeout)opts.onTimeout();}ck();},
 
-    // ── Toast (notificação flutuante) ──
     toast: function(msg, ok){
       var t=document.createElement('div');
       t.className='om-toast '+(ok!==false?'om-toast-ok':'om-toast-err');
       t.textContent=msg;
       var c=document.getElementById('omega-toasts');
       if(c){c.appendChild(t);ST(function(){try{t.remove();}catch(e){}},3000);}
-      // Limita a 5 toasts simultâneos
       while(c&&c.children.length>5) c.removeChild(c.firstChild);
     }
   };
