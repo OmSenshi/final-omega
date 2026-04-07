@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.5 (Sunshine Edition)
-// Anti-RaceCondition (Inclusão), Eixos Fallback, Arrendamento Refinado
+// bridge.js — Final Omega v7.6 (Sunshine Edition)
+// Tab Navigator (abrirAba), Fix Undefined Modo, Anti-Atropelamento
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -85,6 +85,20 @@
       }
       next();
     });
+  }
+
+  // ── FUNÇÃO DE NAVEGAÇÃO DE ABAS ──
+  async function abrirAba(seletorAba, seletorPainel) {
+      var aba = document.querySelector(seletorAba);
+      if (aba) {
+          var isSelected = aba.getAttribute('aria-selected') === 'true' || aba.classList.contains('active');
+          if (!isSelected) {
+              aba.click();
+              log('Abrindo aba: ' + seletorAba, 'ok');
+              try { await waitForVisible(seletorPainel, 8000); } catch(e) { log('Aba demorou a responder', 'warn'); }
+              await delay(1000); // Dá tempo das animações do Bootstrap terminarem
+          }
+      }
   }
 
   function salvarEstado(nome, dados) { gmSet('omega_state', JSON.stringify({ estado: nome, dados: dados, ts: Date.now(), returnUrl: window.location.href })); log('Estado salvo: ' + nome, 'ok'); }
@@ -515,16 +529,18 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (Cadastros)
+  // PREENCHIMENTO DE DADOS (Cadastros) E VEICULOS
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
     var cep=(d.cep||'').replace(/\D/g,''); if(!cep){var ceps={MG:['32220390','32017900'],SP:['04805140','01002900'],RJ:['23032486','20211110']};var est=['MG','SP','RJ'][Math.floor(Math.random()*3)];var l=ceps[est]||ceps.MG;cep=l[Math.floor(Math.random()*l.length)];}
     
+    await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
+    
     var btn = getVisible('[data-action*="Endereco/Novo"], [data-action*="EnderecoPedido"]');
     if(btn){ btn.click(); await delay(2000); }
 
-    try { await waitForVisible('#Cep, input[name*="Cep"]', 10000); } catch(e) { return; }
+    try { await waitForVisible('#Cep, input[name*="Cep"]', 10000); } catch(e) { log('Modal de Endereco falhou','err'); return; }
     
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
@@ -552,11 +568,13 @@
   }
 
   async function adicionarContato(tipo,valor){
+    await abrirAba('a.contatos, a[href="#contatos"]', '#ContatoPedidoPanel, [data-action*="ContatoPedido/Novo"]');
+
     var btn = getVisible('[data-action*="ContatoPedido/Novo"]');
     if(!btn) return false;
     btn.click(); await delay(2000);
 
-    try{ await waitForVisible('#CodigoTipoContato', 5000); } catch(e){ return false; }
+    try{ await waitForVisible('#CodigoTipoContato', 5000); } catch(e){ log('Modal de Contato falhou','err'); return false; }
     
     var selTipo = getVisible('#CodigoTipoContato');
     if(selTipo) {
@@ -584,11 +602,13 @@
 
   async function preencherGestor(cpf){
     enviarStatus('running','Gestor/socio...',{step:'gestor'});
+    await abrirAba('a.gestor, a[href="#gestor"]', '#GestorPedidoPanel, [data-action*="GestorPedido/Novo"]');
+
     var btn = getVisible('[data-action*="Gestor/Criar"], [data-action*="GestorPedido/Novo"]');
     if(!btn) return;
     btn.click(); await delay(2000);
 
-    try{ await waitForVisible('.modal.show select, .modal.in select', 10000); } catch(e){ return; }
+    try{ await waitForVisible('.modal.show select, .modal.in select', 10000); } catch(e){ log('Modal de Gestor falhou','err'); return; }
 
     var sel = getVisible('.modal.show select, .modal.in select');
     if(sel) {
@@ -628,11 +648,13 @@
 
   async function preencherRT(){
     enviarStatus('running','RT...',{step:'rt'}); var cpfRT=gmGet('omega_rt_cpf','')||'07141753664';
+    await abrirAba('a.responsavelTecnico, a[href="#responsavelTecnico"]', '#ResponsavelTecnicoPanel, [data-action*="ResponsavelTecnico/Criar"]');
+
     var btn = getVisible('[data-action*="ResponsavelTecnico/Criar"]');
     if(!btn) return;
     btn.click(); await delay(2000);
 
-    try{ await waitForVisible('.modal #Cpf', 10000); } catch(e){ return; }
+    try{ await waitForVisible('.modal #Cpf', 10000); } catch(e){ log('Modal de RT falhou','err'); return; }
 
     var cf = getVisible('.modal #Cpf');
     if(cf){
@@ -672,10 +694,6 @@
       enviarStatus('done','Cadastro concluido!');
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // VEÍCULOS E FINALIZAÇÃO DO PEDIDO
-  // ══════════════════════════════════════════════════════════════
-
   async function processarInclusaoVeiculo(placa,renavam){
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
     var btnN = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
@@ -702,7 +720,6 @@
     await waitBlockUI(15000); 
     await delay(1500); 
 
-    // TARA FALLBACK
     var tara = getVisible('#Tara');
     if(tara && (!tara.value || tara.value.trim() === '')) {
         tara.removeAttribute('disabled');
@@ -712,7 +729,6 @@
         var jq = unsafeWindow.jQuery; if(jq) jq(tara).trigger('change');
     }
 
-    // EIXOS FALLBACK
     var eixos = getVisible('#Eixos');
     if(eixos && (!eixos.value || eixos.value.trim() === '' || eixos.value === '0')) {
         eixos.removeAttribute('disabled');
@@ -743,11 +759,7 @@
       await finalizarPedidoANTT(); return;
     }
     
-    var tabVeiculo = document.querySelector('a.veiculo, a[href="#veiculo"]');
-    if (tabVeiculo && tabVeiculo.getAttribute('aria-selected') !== 'true') {
-        tabVeiculo.click();
-        await delay(2000);
-    }
+    await abrirAba('a.veiculo, a[href="#veiculo"]', '#VeiculoPedidoPanel, [data-action*="Veiculo/Novo"]');
 
     var vi = parseInt(gmGet('omega_current_vehicle_index','0')) || 0;
 
@@ -760,6 +772,7 @@
         enviarStatus('running','Terceiro: arrendamento '+v.placa,{step:'desvio'}); 
         gmSet('omega_return_url', window.location.href);
         salvarEstado('inclusao_pendente_arrendamento',{
+            modo: 'arrendamento', // FIX DO UNDEFINED
             transportador:task.transportador||task, veiculos:veiculos, currentVehicleIndex:vi, 
             credenciais:task.credenciais, cnpj_data:task.cnpj_data, 
             arrendamento:{placa:v.placa, renavam:v.renavam, cpf_arrendante:v.cpf_arrendante||'', nome_arrendante:v.nome_arrendante||''}
@@ -971,7 +984,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // O GUARDA DE TRÂNSITO
+  // O GUARDA DE TRÂNSITO (Verificação Inteligente de Memória)
   // ══════════════════════════════════════════════════════════════
   function verificarEstadoPendente(){
     var estado = lerEstado(); if(!estado) return;
