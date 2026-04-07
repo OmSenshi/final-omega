@@ -43,8 +43,12 @@ function parseCookies(str) {
 function isAuthed(req) {
   if (!AUTH_TOKEN) return true;
   const cookies = parseCookies(req.headers.cookie);
-  const sid = cookies.omega_sid || req.headers['x-session'] || '';
-  return sid && sessions.has(sid);
+  const sid = cookies.omega_sid || '';
+  if (sid && sessions.has(sid)) return true;
+  // Aceita AUTH_TOKEN direto via header (pro bot WhatsApp)
+  const headerToken = req.headers['x-session'] || '';
+  if (headerToken === AUTH_TOKEN) return true;
+  return false;
 }
 
 function authGuard(req, res, next) {
@@ -144,6 +148,8 @@ wss.on('connection', (ws, req) => {
       ws.send(JSON.stringify({ type: 'registered', deviceId }));
       broadcastToFrontend({ event: 'device_connected', deviceId, name: msg.name || deviceId });
       console.log('  [WS] Conectado: ' + (msg.name || deviceId));
+      // Tenta enviar tarefa da fila
+      setTimeout(() => tryDequeueFor(deviceId), 1000);
       return;
     }
 
@@ -169,6 +175,44 @@ wss.on('connection', (ws, req) => {
   ws.on('error', () => { if (deviceId) devices.delete(deviceId); });
 });
 
+// ═══ FILA DE TAREFAS (retry quando dispositivo reconecta) ═══
+const taskQueue = []; // { task, createdAt, attempts }
+const QUEUE_MAX_AGE = 10 * 60 * 1000; // 10 min de vida max
+const QUEUE_MAX_ATTEMPTS = 3;
+
+function tryDequeueFor(deviceId) {
+  if (taskQueue.length === 0) return;
+  const dev = devices.get(deviceId);
+  if (!dev || dev.status !== 'idle') return;
+
+  // Limpa tarefas expiradas
+  const now = Date.now();
+  while (taskQueue.length > 0 && now - taskQueue[0].createdAt > QUEUE_MAX_AGE) {
+    const expired = taskQueue.shift();
+    broadcastToFrontend({ event: 'task_expired', taskId: expired.taskId, reason: 'Expirou na fila' });
+  }
+
+  if (taskQueue.length === 0) return;
+
+  const item = taskQueue.shift();
+  item.attempts++;
+  const taskId = item.taskId;
+  try {
+    dev.ws.send(JSON.stringify({ type: 'task', taskId, ...item.task }));
+    dev.status = 'running';
+    dev.currentTask = taskId;
+    broadcastToFrontend({ event: 'task_dequeued', deviceId, taskId, attempt: item.attempts });
+    console.log('  [QUEUE] Tarefa ' + taskId + ' enviada (tentativa ' + item.attempts + ')');
+  } catch (err) {
+    // Falhou — recoloca na fila se não excedeu tentativas
+    if (item.attempts < QUEUE_MAX_ATTEMPTS) {
+      taskQueue.unshift(item);
+    } else {
+      broadcastToFrontend({ event: 'task_failed', taskId, reason: 'Max tentativas excedidas' });
+    }
+  }
+}
+
 function broadcastToFrontend(data) {
   const msg = 'data: ' + JSON.stringify(data) + '\n\n';
   for (const res of browserClients) { try { res.write(msg); } catch { browserClients.delete(res); } }
@@ -191,9 +235,23 @@ app.post('/api/task/send', authGuard, (req, res) => {
   const { deviceId, task } = req.body;
   let targetId = deviceId;
   if (!targetId) { for (const [id, dev] of devices) { if (dev.status === 'idle') { targetId = id; break; } } }
-  if (!targetId || !devices.has(targetId)) return res.status(404).json({ success: false, error: 'Nenhum dispositivo disponivel.' });
+
+  // Se não tem dispositivo disponível, enfileira
+  if (!targetId || !devices.has(targetId)) {
+    const taskId = 'task_' + Date.now();
+    taskQueue.push({ task, taskId, createdAt: Date.now(), attempts: 0 });
+    broadcastToFrontend({ event: 'task_queued', taskId, queueSize: taskQueue.length });
+    return res.json({ success: true, queued: true, taskId, message: 'Sem dispositivo. Tarefa na fila (' + taskQueue.length + '). Sera enviada quando reconectar.' });
+  }
+
   const dev = devices.get(targetId);
-  if (dev.status === 'running') return res.status(409).json({ success: false, error: 'Dispositivo ocupado.' });
+  if (dev.status === 'running') {
+    const taskId = 'task_' + Date.now();
+    taskQueue.push({ task, taskId, createdAt: Date.now(), attempts: 0 });
+    broadcastToFrontend({ event: 'task_queued', taskId, queueSize: taskQueue.length });
+    return res.json({ success: true, queued: true, taskId, message: 'Dispositivo ocupado. Na fila.' });
+  }
+
   const taskId = 'task_' + Date.now();
   try {
     dev.ws.send(JSON.stringify({ type: 'task', taskId, ...task }));
@@ -201,6 +259,10 @@ app.post('/api/task/send', authGuard, (req, res) => {
     broadcastToFrontend({ event: 'task_sent', deviceId: targetId, taskId, task: task.modo });
     res.json({ success: true, taskId, deviceId: targetId });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/task/queue', authGuard, (req, res) => {
+  res.json({ success: true, queue: taskQueue.map(i => ({ taskId: i.taskId, modo: i.task.modo, attempts: i.attempts, age: Date.now() - i.createdAt })), size: taskQueue.length });
 });
 
 app.post('/api/task/stop', authGuard, (req, res) => {

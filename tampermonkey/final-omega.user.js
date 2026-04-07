@@ -1,10 +1,12 @@
 // ==UserScript==
-// @name         Final Omega — Painel ANTT + Bridge
+// @name         Final Omega v4.0
 // @namespace    https://github.com/OmSenshi/final-omega
-// @version      3.0
-// @description  Automacao ANTT com ponte WebSocket para VPS
+// @version      4.0
+// @description  Automacao ANTT autonoma com ponte WebSocket
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
+// @match        https://sso.acesso.gov.br/*
+// @match        https://acesso.gov.br/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        unsafeWindow
@@ -18,10 +20,10 @@
 // @require      https://raw.githubusercontent.com/OmSenshi/final-omega/main/tampermonkey/bridge.js
 // ==/UserScript==
 
-// Todos os modulos carregam via @require na ordem:
-// 1. core.js      — UI, utils, aguardarElemento
+// Ordem de carregamento:
+// 1. core.js      — UI, utils, aguardarElemento, toasts, FAB
 // 2. extractor.js — OCR via Claude API
-// 3. arrendamento.js — aba CRLV + Contrato + Historico
-// 4. cadastro.js  — aba Cadastro CPF/CNPJ
-// 5. consulta.js  — aba Emissao
-// 6. bridge.js    — aba Bridge (WebSocket → VPS)
+// 3. arrendamento.js — aba CRLV + Contrato + Historico (so carrega na ANTT)
+// 4. cadastro.js  — aba Cadastro CPF/CNPJ (so carrega na ANTT)
+// 5. consulta.js  — aba Emissao (so carrega na ANTT)
+// 6. bridge.js    — WebSocket + login Gov.br + 4 fluxos autonomos
