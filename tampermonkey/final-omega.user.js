@@ -12,6 +12,8 @@
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
+// @connect      omhk.com.br
+// @connect      *
 // @run-at       document-end
 //
 // @require      https://raw.githubusercontent.com/OmSenshi/final-omega/main/tampermonkey/core.js
