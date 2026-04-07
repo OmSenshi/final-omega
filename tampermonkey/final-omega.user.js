@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Final Omega v5.7 Sunshine
+// @name         Final Omega v6.0 Sunshine
 // @namespace    https://github.com/OmSenshi/final-omega
-// @version      5.7
-// @description  Automacao ANTT — Cache Bypass via UI
+// @version      6.0
+// @description  Automacao ANTT — Bolinha Inteligente e Limpa
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
 // @match        https://sso.acesso.gov.br/*
