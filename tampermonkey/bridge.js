@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v6.0 (Sunshine Edition)
-// HTTP Polling nativo, Hack da Senha Vue.js, Safeload Gov.br, Roteamento e Eixos
+// bridge.js — Final Omega v6.1 (Sunshine Edition)
+// HTTP Polling nativo, Máquina de Estados Gov.br, Safeload, Roteamento e Eixos
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -116,7 +116,6 @@
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
   }
 
-  // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent=''
@@ -244,7 +243,6 @@
       if(!isGovBr)_enviarStatusOriginal(status,message,extra);
     };
 
-    // ── ESPERAR O VUE.JS CARREGAR ──
     waitForElement('form, #accountId, .login-content', 15000).then(function() {
         document.body.appendChild(govPanel);
         if(temConfig){ 
@@ -254,7 +252,6 @@
             renderGovForm(); 
         }
     }).catch(function() {
-        // Fallback caso demore demais
         document.body.appendChild(govPanel);
         if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); }
     });
@@ -300,34 +297,77 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // O GOLPE DO VUE.JS (Hack da Senha)
+  // MÁQUINA DE ESTADOS GOV.BR (Corrige erro Timeout: #accountId)
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
     var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
-    log('Gov.br — login...','ok');
-    try{
-      var cpfF=await waitForElement('#accountId',15000);await typeSlowly(cpfF,cred.cpf.replace(/\D/g,''),60);await delay(500);
-      var btnC=await waitForElement('#enter-account-id',5000);btnC.click();await delay(3000);
-      try{
-        var senhaF=await waitForElement('#password',20000);await delay(1000);
-        
-        // HACK NATIVO: Engana o framework injetando o valor na raiz do elemento
-        senhaF.focus();
-        var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeInputValueSetter.call(senhaF, cred.senha);
-        
-        // Dispara os eventos pro Vue/React "acordar" e ler a nova senha
-        senhaF.dispatchEvent(new Event('input', {bubbles: true}));
-        senhaF.dispatchEvent(new Event('change', {bubbles: true}));
-        await delay(500);
-        
-        var btnE=await waitForElement('#submit-button',3000);btnE.click();await delay(3000);
-      }catch(e){log('Senha falhou','warn');salvarEstado('aguardando_captcha',estado.dados);enviarStatus('error','hCaptcha. Resolva manualmente.');return;}
-      
-      try{await waitForElement('.login-mandatory-mfa-acquiring',5000);var bSkip=await waitUntilEnabled('button[value="confirm-skip-mandatory-mfa"]',120000);bSkip.click();await delay(1000);try{var cb=await waitForElement('#confirmSkipMandatoryMfaCheckBox',5000);cb.checked=true;cb.click();cb.dispatchEvent(new Event('change',{bubbles:true}));await delay(500);var bConf=await waitForElement('#confirmSkipMandatoryMfaButton',3000);bConf.click();await delay(2000);}catch(e){}}catch(e){}
-      try{await waitForElement('#authorize-info',5000);var bAuth=await waitForElement('button[name="user_oauth_approval"][value="true"]',5000);bAuth.click();await delay(3000);}catch(e){}
-    }catch(e){log('Erro login: '+e.message,'err');enviarStatus('error','Login: '+e.message);}
+    
+    // Dá 1 segundo pro Vue.js desenhar a tela completamente
+    await delay(1000); 
+
+    try {
+        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
+        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
+        var senhaF = document.getElementById('password');
+        var cpfF = document.getElementById('accountId');
+
+        // TELA 4: OAuth (Autorização)
+        if(btnAuth) {
+            log('OAuth — autorizando...','ok');
+            btnAuth.click();
+            return;
+        }
+
+        // TELA 3: MFA (Autenticação de 2 Fatores)
+        if(btnSkipMfa) {
+            log('MFA — pulando...','warn');
+            btnSkipMfa.click();
+            await delay(1000);
+            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
+            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
+            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
+            if(bConf) bConf.click();
+            return;
+        }
+
+        // TELA 2: SENHA
+        if(senhaF) {
+            log('Tela Senha detectada','ok');
+            senhaF.focus();
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(senhaF, cred.senha);
+            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
+            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
+            await delay(500);
+            var btnE = document.getElementById('submit-button');
+            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
+            return;
+        }
+
+        // TELA 1: CPF
+        if(cpfF) {
+            log('Tela CPF detectada','ok');
+            await typeSlowly(cpfF, cred.cpf.replace(/\D/g,''), 60);
+            await delay(500);
+            var btnC = document.getElementById('enter-account-id');
+            if(btnC) btnC.click();
+            return;
+        }
+
+        // EXCEÇÃO: Captcha ou tela desconhecida
+        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
+            log('Captcha detectado','warn');
+            salvarEstado('aguardando_captcha',estado.dados);
+            enviarStatus('error','Captcha detectado. Resolva manualmente.');
+        } else {
+            log('Nenhum campo alvo encontrado.','warn');
+        }
+
+    }catch(e){
+        log('Erro login: '+e.message,'err');
+        enviarStatus('error','Login: '+e.message);
+    }
   }
 
   async function processarInclusaoVeiculo(placa,renavam){
