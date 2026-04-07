@@ -1,6 +1,7 @@
-// core.js — Omega Painel v3.2: UI responsiva + FAB Esquerdo + Memoria Universal
+// core.js — Omega Painel v5.7: UI responsiva + FAB Esquerdo + Cache Bypass
 (function(){
-  if(document.getElementById('antt-helper'))return;
+  if(window._omegaCoreCarregado) return;
+  window._omegaCoreCarregado = true;
 
   window.OmegaJQ  = unsafeWindow.jQuery || unsafeWindow.$;
   window.OmegaMom = unsafeWindow.moment;
@@ -12,6 +13,8 @@
   function _gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   var isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
+  // REGRA DE OURO: O painel grande SÓ renderiza se estiver na ANTT
+  var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
 
   var css = document.createElement('style');
   css.id = 'omega-theme';
@@ -35,66 +38,63 @@
 
   var toastContainer = document.createElement('div'); toastContainer.id = 'omega-toasts'; document.body.appendChild(toastContainer);
 
-  var fab = document.createElement('button'); fab.id = 'omega-fab'; fab.textContent = 'Ω'; fab.style.display = 'none'; fab.style.bottom = '20px'; fab.style.left = '20px'; document.body.appendChild(fab);
+  // Injeta o painel grande e o botão Ω APENAS se estiver no site da ANTT
+  if (isANTT) {
+      var fab = document.createElement('button'); fab.id = 'omega-fab'; fab.textContent = 'Ω'; fab.style.display = 'none'; fab.style.bottom = '20px'; fab.style.left = '20px'; document.body.appendChild(fab);
 
-  (function(){
-    var dragging=false, startX=0, startY=0, fabX=0, fabY=0, moved=false;
-    fab.addEventListener('touchstart',function(e){dragging=true; moved=false;var t=e.touches[0]; startX=t.clientX; startY=t.clientY;var r=fab.getBoundingClientRect(); fabX=r.left; fabY=r.top;e.preventDefault();},{passive:false});
-    document.addEventListener('touchmove',function(e){if(!dragging)return;var t=e.touches[0], dx=t.clientX-startX, dy=t.clientY-startY;if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;var nx=fabX+dx, ny=fabY+dy;nx=Math.max(0,Math.min(nx,window.innerWidth-60));ny=Math.max(0,Math.min(ny,window.innerHeight-60));fab.style.left=nx+'px'; fab.style.top=ny+'px';fab.style.right='auto'; fab.style.bottom='auto';});
-    document.addEventListener('touchend',function(){if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }dragging=false;});
-    fab.addEventListener('mousedown',function(e){dragging=true; moved=false;startX=e.clientX; startY=e.clientY;var r=fab.getBoundingClientRect(); fabX=r.left; fabY=r.top;e.preventDefault();});
-    document.addEventListener('mousemove',function(e){if(!dragging)return;var dx=e.clientX-startX, dy=e.clientY-startY;if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;var nx=fabX+dx, ny=fabY+dy;nx=Math.max(0,Math.min(nx,window.innerWidth-60));ny=Math.max(0,Math.min(ny,window.innerHeight-60));fab.style.left=nx+'px'; fab.style.top=ny+'px';fab.style.right='auto'; fab.style.bottom='auto';});
-    document.addEventListener('mouseup',function(){if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }dragging=false;});
-  })();
+      (function(){
+        var dragging=false, startX=0, startY=0, fabX=0, fabY=0, moved=false;
+        fab.addEventListener('touchstart',function(e){dragging=true; moved=false;var t=e.touches[0]; startX=t.clientX; startY=t.clientY;var r=fab.getBoundingClientRect(); fabX=r.left; fabY=r.top;e.preventDefault();},{passive:false});
+        document.addEventListener('touchmove',function(e){if(!dragging)return;var t=e.touches[0], dx=t.clientX-startX, dy=t.clientY-startY;if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;var nx=fabX+dx, ny=fabY+dy;nx=Math.max(0,Math.min(nx,window.innerWidth-60));ny=Math.max(0,Math.min(ny,window.innerHeight-60));fab.style.left=nx+'px'; fab.style.top=ny+'px';fab.style.right='auto'; fab.style.bottom='auto';});
+        document.addEventListener('touchend',function(){if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }dragging=false;});
+        fab.addEventListener('mousedown',function(e){dragging=true; moved=false;startX=e.clientX; startY=e.clientY;var r=fab.getBoundingClientRect(); fabX=r.left; fabY=r.top;e.preventDefault();});
+        document.addEventListener('mousemove',function(e){if(!dragging)return;var dx=e.clientX-startX, dy=e.clientY-startY;if(Math.abs(dx)>5||Math.abs(dy)>5) moved=true;var nx=fabX+dx, ny=fabY+dy;nx=Math.max(0,Math.min(nx,window.innerWidth-60));ny=Math.max(0,Math.min(ny,window.innerHeight-60));fab.style.left=nx+'px'; fab.style.top=ny+'px';fab.style.right='auto'; fab.style.bottom='auto';});
+        document.addEventListener('mouseup',function(){if(dragging && !moved) { unsafeWindow.OmegaExpandir(); }dragging=false;});
+      })();
 
-  var s = document.createElement('div');
-  s.id = 'antt-helper';
-  s.innerHTML = '<div class="om-swipe-handle"></div><div class="om-header" id="omega-drag-handle"><div class="om-logo">OMEGA</div><div class="om-sub">Painel v3.2</div></div><span class="om-close" onclick="document.getElementById(\'antt-helper\').remove();document.getElementById(\'omega-fab\').style.display=\'none\'">✕</span><span class="om-min" id="omega-minimizar" onclick="OmegaMinimizar()">—</span><div id="omega-tabs"></div><div id="omega-content"></div><hr class="om-hr"><div class="om-rodape"><span class="om-api-status" id="omega-api-status"></span><button class="om-btn-api" onclick="OmegaConfigAPI()">Chave API</button></div>';
-  document.body.appendChild(s);
+      var s = document.createElement('div');
+      s.id = 'antt-helper';
+      s.innerHTML = '<div class="om-swipe-handle"></div><div class="om-header" id="omega-drag-handle"><div class="om-logo">OMEGA</div><div class="om-sub">Painel v3.2</div></div><span class="om-close" onclick="document.getElementById(\'antt-helper\').remove();document.getElementById(\'omega-fab\').style.display=\'none\'">✕</span><span class="om-min" id="omega-minimizar" onclick="OmegaMinimizar()">—</span><div id="omega-tabs"></div><div id="omega-content"></div><hr class="om-hr"><div class="om-rodape"><span class="om-api-status" id="omega-api-status"></span><button class="om-btn-api" onclick="OmegaConfigAPI()">Chave API</button></div>';
+      document.body.appendChild(s);
 
-  (function(){
-    var handle=document.getElementById('omega-drag-handle'),painel=document.getElementById('antt-helper');
-    var dragging=false,offX=0,offY=0;
-    handle.addEventListener('mousedown',function(e){if(e.target.classList.contains('om-close')||e.target.classList.contains('om-min'))return;if(isMobile)return;dragging=true;var rect=painel.getBoundingClientRect();offX=e.clientX-rect.left;offY=e.clientY-rect.top;e.preventDefault();});
-    document.addEventListener('mousemove',function(e){if(!dragging)return;var nx=e.clientX-offX,ny=e.clientY-offY;nx=Math.max(0,Math.min(nx,window.innerWidth-painel.offsetWidth));ny=Math.max(0,Math.min(ny,window.innerHeight-40));painel.style.left=nx+'px';painel.style.top=ny+'px';painel.style.right='auto';});
-    document.addEventListener('mouseup',function(){if(dragging){dragging=false;try{var r=painel.getBoundingClientRect();if(typeof GM_setValue!=='undefined')GM_setValue('omega_pos',JSON.stringify({left:r.left,top:r.top}));}catch(e){}}});
-    if(!isMobile){try{var pr=_gmGet('omega_pos','');if(pr){var p=JSON.parse(pr);if(p.left>=0&&p.top>=0&&p.left<window.innerWidth&&p.top<window.innerHeight){painel.style.left=p.left+'px';painel.style.top=p.top+'px';painel.style.right='auto';}}}catch(e){}}
-  })();
+      (function(){
+        var handle=document.getElementById('omega-drag-handle'),painel=document.getElementById('antt-helper');
+        var dragging=false,offX=0,offY=0;
+        handle.addEventListener('mousedown',function(e){if(e.target.classList.contains('om-close')||e.target.classList.contains('om-min'))return;if(isMobile)return;dragging=true;var rect=painel.getBoundingClientRect();offX=e.clientX-rect.left;offY=e.clientY-rect.top;e.preventDefault();});
+        document.addEventListener('mousemove',function(e){if(!dragging)return;var nx=e.clientX-offX,ny=e.clientY-offY;nx=Math.max(0,Math.min(nx,window.innerWidth-painel.offsetWidth));ny=Math.max(0,Math.min(ny,window.innerHeight-40));painel.style.left=nx+'px';painel.style.top=ny+'px';painel.style.right='auto';});
+        document.addEventListener('mouseup',function(){if(dragging){dragging=false;try{var r=painel.getBoundingClientRect();if(typeof GM_setValue!=='undefined')GM_setValue('omega_pos',JSON.stringify({left:r.left,top:r.top}));}catch(e){}}});
+        if(!isMobile){try{var pr=_gmGet('omega_pos','');if(pr){var p=JSON.parse(pr);if(p.left>=0&&p.top>=0&&p.left<window.innerWidth&&p.top<window.innerHeight){painel.style.left=p.left+'px';painel.style.top=p.top+'px';painel.style.right='auto';}}}catch(e){}}
+      })();
 
-  window._OmegaAbas = [];
-  unsafeWindow.OmegaAba = function(abaId){
-    document.querySelectorAll('#omega-tabs button').forEach(function(btn){btn.classList.toggle('om-aba-ativa',btn.getAttribute('data-aba')===abaId);});
-    document.querySelectorAll('#omega-content > [data-aba-content]').forEach(function(el){el.style.display=el.getAttribute('data-aba-content')===abaId?'block':'none';});
-    if(window._OmegaAbaCallbacks&&window._OmegaAbaCallbacks[abaId]) window._OmegaAbaCallbacks[abaId]();
-    _gmSet('omega_aba_ativa',abaId);
-  };
+      window._OmegaAbas = [];
+      unsafeWindow.OmegaAba = function(abaId){
+        document.querySelectorAll('#omega-tabs button').forEach(function(btn){btn.classList.toggle('om-aba-ativa',btn.getAttribute('data-aba')===abaId);});
+        document.querySelectorAll('#omega-content > [data-aba-content]').forEach(function(el){el.style.display=el.getAttribute('data-aba-content')===abaId?'block':'none';});
+        if(window._OmegaAbaCallbacks&&window._OmegaAbaCallbacks[abaId]) window._OmegaAbaCallbacks[abaId]();
+        _gmSet('omega_aba_ativa',abaId);
+      };
 
-  // ── Lógica de Memória do Minimizar UNIVERSAL (Sempre FAB) ──
-  unsafeWindow.OmegaMinimizar = function(){
-    var p=document.getElementById('antt-helper');
-    p.classList.add('om-hidden');
-    fab.style.display='flex';
-    _gmSet('omega_painel_min', '1');
-  };
+      unsafeWindow.OmegaMinimizar = function(){
+        var p=document.getElementById('antt-helper');
+        p.classList.add('om-hidden');
+        fab.style.display='flex';
+        _gmSet('omega_painel_min', '1');
+      };
 
-  unsafeWindow.OmegaExpandir = function(){
-    var p=document.getElementById('antt-helper');
-    p.classList.remove('om-hidden');
-    fab.style.display='none';
-    _gmSet('omega_painel_min', '0');
-  };
+      unsafeWindow.OmegaExpandir = function(){
+        var p=document.getElementById('antt-helper');
+        p.classList.remove('om-hidden');
+        fab.style.display='none';
+        _gmSet('omega_painel_min', '0');
+      };
 
-  // ── Restaura estado ao carregar ──
-  setTimeout(function(){
-    var isMin = _gmGet('omega_painel_min', '0') === '1';
-    if(isMin) {
-       unsafeWindow.OmegaMinimizar();
-    } else if (isMobile) {
-       // Mobile sempre começa minimizado pra não atrapalhar
-       unsafeWindow.OmegaMinimizar();
-    }
-  }, 500);
+      setTimeout(function(){
+        var isMin = _gmGet('omega_painel_min', '0') === '1';
+        if(isMin || isMobile) { unsafeWindow.OmegaMinimizar(); }
+      }, 500);
+  }
 
+  // Funcoes globais continuam disponiveis pra todos os sites
   window.OmegaUtils = {
     box: function(el,ok,msg){if(!el)return;el.className='om-box '+(ok?'om-box-ok':'om-box-err');el.innerHTML=msg;},
     clearBox: function(el){if(el){el.className='';el.innerHTML='';}},
@@ -107,9 +107,13 @@
     getNome: function(){var h=document.getElementById('NomeArrendante');if(h&&h.value)return h.value.trim();var n=document.getElementById('NomesTransportador');if(n&&n.value){try{var a=JSON.parse(n.value);if(a&&a[0]&&a[0].Nome)return a[0].Nome.trim();}catch(e){}}var m=document.body.innerHTML.match(/Bem-vindo\(a\),\s*<i>([^<]+)<\/i>/);return m?m[1].trim():null;},
     substituirTudo: function(antigo,novo){if(!antigo||!novo)return{total:0};function tr(t){return(!t||typeof t!=='string')?t:t.replaceAll(antigo,novo);}var ta=0,tv=0,tt=0;document.querySelectorAll('*').forEach(function(el){for(var i=0;i<el.attributes.length;i++){var a=el.attributes[i];if(a.value.includes(antigo)){var b=a.value;a.value=tr(a.value);if(a.value!==b)ta++;}}if(typeof el.value==='string'&&el.value.includes(antigo)){var b=el.value;el.value=tr(el.value);if(el.value!==b)tv++;}});var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);var nd;while(nd=w.nextNode()){if(nd.nodeValue.includes(antigo)){var b=nd.nodeValue;nd.nodeValue=tr(nd.nodeValue);if(nd.nodeValue!==b)tt++;}}return{atributos:ta,values:tv,textos:tt,total:ta+tv+tt};},
     injetarData: function(divId,valor){var jq=window.OmegaJQ,mom=window.OmegaMom;if(!jq||!mom)return false;var dw=jq('#'+divId),inp=dw.find('input').first();if(!inp.length)return false;inp.removeAttr('disabled').removeAttr('readonly');try{var dp=dw.data('DateTimePicker');if(dp){dp.date(mom(valor,'DD/MM/YYYY'));return true;}}catch(e){}try{dw.datetimepicker({format:'DD/MM/YYYY'});dw.data('DateTimePicker').date(mom(valor,'DD/MM/YYYY'));return true;}catch(e){}inp.val(valor);inp.trigger('input').trigger('change').trigger('blur').trigger('dp.change');dw.trigger('dp.change').trigger('change');return inp.val()===valor;},
-    registrarAba: function(id,label,html,onShow){var tabsDiv=document.getElementById('omega-tabs'),contentDiv=document.getElementById('omega-content');var btn=document.createElement('button');btn.setAttribute('data-aba',id);btn.textContent=label;btn.onclick=function(){OmegaAba(id);};tabsDiv.appendChild(btn);var total=tabsDiv.children.length;tabsDiv.style.gridTemplateColumns='repeat('+total+', 1fr)';var div=document.createElement('div');div.setAttribute('data-aba-content',id);div.style.display='none';div.innerHTML=html;contentDiv.appendChild(div);if(onShow){if(!window._OmegaAbaCallbacks)window._OmegaAbaCallbacks={};window._OmegaAbaCallbacks[id]=onShow;}if(total===1){var salva=_gmGet('omega_aba_ativa','');if(!salva)OmegaAba(id);}},
+    registrarAba: function(id,label,html,onShow){
+      var tabsDiv=document.getElementById('omega-tabs'),contentDiv=document.getElementById('omega-content');
+      if(!tabsDiv || !contentDiv) return; // Se nao tem painel (Gov.br), ignora
+      var btn=document.createElement('button');btn.setAttribute('data-aba',id);btn.textContent=label;btn.onclick=function(){OmegaAba(id);};tabsDiv.appendChild(btn);var total=tabsDiv.children.length;tabsDiv.style.gridTemplateColumns='repeat('+total+', 1fr)';var div=document.createElement('div');div.setAttribute('data-aba-content',id);div.style.display='none';div.innerHTML=html;contentDiv.appendChild(div);if(onShow){if(!window._OmegaAbaCallbacks)window._OmegaAbaCallbacks={};window._OmegaAbaCallbacks[id]=onShow;}if(total===1){var salva=_gmGet('omega_aba_ativa','');if(!salva)OmegaAba(id);}
+    },
     restaurarAbaSalva: function(){var salva=_gmGet('omega_aba_ativa','');if(salva){var existe=document.querySelector('#omega-tabs button[data-aba="'+salva+'"]');if(existe)OmegaAba(salva);else OmegaAba(document.querySelector('#omega-tabs button').getAttribute('data-aba'));}},
-    addSecao: function(html){document.getElementById('omega-content').insertAdjacentHTML('beforeend',html);},
+    addSecao: function(html){var c=document.getElementById('omega-content'); if(c) c.insertAdjacentHTML('beforeend',html);},
     getApiKey: function(){return _gmGet('omega_api_key','')||localStorage.getItem('omega_api_key')||'';},
     setApiKey: function(key){_gmSet('omega_api_key',key);localStorage.setItem('omega_api_key',key);},
     matarTimers: function(){try{var id=unsafeWindow.setTimeout(function(){},1);unsafeWindow.clearTimeout(id);for(var i=id;i>Math.max(0,id-500);i--){unsafeWindow.clearInterval(i);unsafeWindow.clearTimeout(i);}}catch(e){}document.querySelectorAll('.toast-close-button').forEach(function(b){try{b.click();}catch(e){}});},
@@ -135,5 +139,5 @@
   unsafeWindow.addEventListener('beforeunload',function(e){if(window._omegaAutomacaoAtiva){e.preventDefault();e.returnValue='';return'';}},true);
   unsafeWindow.OmegaConfigAPI = function(){var atual=window.OmegaUtils.getApiKey();var nova=prompt('Cole sua chave API (sk-ant-...):',atual?'********':'');if(nova&&nova!=='********'){window.OmegaUtils.setApiKey(nova.trim());_atualizarStatusAPI();}};
   function _atualizarStatusAPI(){var el=document.getElementById('omega-api-status'),key=window.OmegaUtils.getApiKey();if(el)el.textContent=key?'API configurada':'API nao configurada';}
-  _atualizarStatusAPI();
+  if(isANTT) _atualizarStatusAPI();
 })();
