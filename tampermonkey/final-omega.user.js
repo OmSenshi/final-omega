@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Final Omega v5.6 Sunshine
+// @name         Final Omega v5.7 Sunshine
 // @namespace    https://github.com/OmSenshi/final-omega
-// @version      5.6
-// @description  Automacao ANTT — Bypass CSP via GM_xmlhttpRequest + React/Vue Sync
+// @version      5.7
+// @description  Automacao ANTT — Cache Bypass via UI
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
 // @match        https://sso.acesso.gov.br/*
