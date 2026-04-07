@@ -177,7 +177,24 @@
         +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div>'
         +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
         +'<div id="og-conn-status" class="og-status" style="display:none"></div>';
-      bindGovEvents();
+      // Bind APÓS innerHTML (elementos existem dentro do govPanel)
+      var saveBtn=govPanel.querySelector('#og-save');
+      if(saveBtn){
+        saveBtn.addEventListener('click',function(){
+          var url=(govPanel.querySelector('#og-url')||{}).value||'';
+          var token=(govPanel.querySelector('#og-token')||{}).value||'';
+          var name=(govPanel.querySelector('#og-name')||{}).value||'Dispositivo';
+          url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
+          if(!url){atualizarGovStatus('URL vazia','err');return;}
+          VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
+          gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
+          paused=false;errorCount=0;govRetryCount=0;resetBackoff();
+          renderGovStatus('Conectando...','info');
+          conectarGov();
+        });
+      }
+      var hideBtn=govPanel.querySelector('#og-hide');
+      if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
     }
 
     function renderGovStatus(statusText, tipo){
@@ -185,11 +202,10 @@
         +'<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div>'
         +'<div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div>'
         +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
-      // Botão reset sempre presente
-      var resetBtn=document.getElementById('og-reset');
+      // Bind reset APÓS innerHTML
+      var resetBtn=govPanel.querySelector('#og-reset');
       if(resetBtn){
         resetBtn.addEventListener('click',function(){
-          // Para tudo, limpa credenciais, volta pro formulário
           paused=true;
           if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}
           if(ws){try{ws.close();}catch(e){}ws=null;}
@@ -203,31 +219,11 @@
     }
 
     function atualizarGovStatus(texto,tipo){
-      var el=document.getElementById('og-conn-status');
+      var el=govPanel.querySelector('#og-conn-status');
       if(!el)return;
       el.style.display='block';
       el.className='og-status og-status-'+(tipo||'info');
       el.textContent=texto;
-    }
-
-    function bindGovEvents(){
-      var saveBtn=document.getElementById('og-save');
-      if(saveBtn){
-        saveBtn.addEventListener('click',function(){
-          var url=(document.getElementById('og-url')||{}).value||'';
-          var token=(document.getElementById('og-token')||{}).value||'';
-          var name=(document.getElementById('og-name')||{}).value||'Dispositivo';
-          url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
-          if(!url){atualizarGovStatus('URL vazia','err');return;}
-          VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
-          gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
-          paused=false;errorCount=0;govRetryCount=0;resetBackoff();
-          renderGovStatus('Conectando...','info');
-          conectarGov();
-        });
-      }
-      var hideBtn=document.getElementById('og-hide');
-      if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
     }
 
     // ── WebSocket específico do Gov.br (não usa conectar() global pra evitar conflito) ──
@@ -264,7 +260,7 @@
       ws.onmessage=function(evt){
         var msg;try{msg=JSON.parse(evt.data);}catch{return;}
         if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);log('Gov.br: registrado '+DEVICE_ID,'ok');}
-        if(msg.type==='task'){receberTarefa(msg);var ts=document.getElementById('og-task-status');if(ts)ts.textContent='Tarefa: '+msg.modo;}
+        if(msg.type==='task'){receberTarefa(msg);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent='Tarefa: '+msg.modo;}
         if(msg.type==='stop')pararTarefa();
       };
 
@@ -285,20 +281,20 @@
       };
     }
 
+    // PRIMEIRO injeta no DOM, DEPOIS conecta
+    document.body.appendChild(govPanel);
+
     // Render inicial
     if(temConfig){
       renderGovStatus('Conectando...','info');
-      document.body.appendChild(govPanel);
-      // Conecta após o DOM estabilizar
       setTimeout(function(){conectarGov();},2000);
     } else {
       renderGovForm();
-      document.body.appendChild(govPanel);
     }
 
-    // Sobrescreve log pra atualizar task status
+    // Override log pra atualizar task status no mini-painel
     var _logOriginal=log;
-    log=function(msg,tipo){_logOriginal(msg,tipo);var ts=document.getElementById('og-task-status');if(ts)ts.textContent=msg;};
+    log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
   }
 
   // ══════════════════════════════════════════════════════════════

@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         Final Omega v4.0
+// @name         Final Omega v5.4 Sunshine
 // @namespace    https://github.com/OmSenshi/final-omega
-// @version      4.0
-// @description  Automacao ANTT autonoma com ponte WebSocket
+// @version      5.4
+// @description  Automacao ANTT autonoma com ponte WebSocket — Sunshine Edition
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
 // @match        https://sso.acesso.gov.br/*
+// @match        https://sso.staging.acesso.gov.br/*
 // @match        https://acesso.gov.br/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -21,9 +22,9 @@
 // ==/UserScript==
 
 // Ordem de carregamento:
-// 1. core.js      — UI, utils, aguardarElemento, toasts, FAB
-// 2. extractor.js — OCR via Claude API
-// 3. arrendamento.js — aba CRLV + Contrato + Historico (so carrega na ANTT)
-// 4. cadastro.js  — aba Cadastro CPF/CNPJ (so carrega na ANTT)
-// 5. consulta.js  — aba Emissao (so carrega na ANTT)
-// 6. bridge.js    — WebSocket + login Gov.br + 4 fluxos autonomos
+// 1. core.js         — UI, FAB, toasts, aguardarElemento (so ANTT)
+// 2. extractor.js    — OCR via Claude Haiku (so ANTT)
+// 3. arrendamento.js — aba CRLV + Contrato + Historico (so ANTT)
+// 4. cadastro.js     — aba Cadastro CPF/CNPJ (so ANTT)
+// 5. consulta.js     — aba Emissao (so ANTT)
+// 6. bridge.js       — WebSocket, login Gov.br, 4 fluxos, resgate, mini-bridge (ANTT + Gov.br)
