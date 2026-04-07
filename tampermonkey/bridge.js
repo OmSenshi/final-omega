@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.8 (Sunshine Edition)
-// Modal Breath, CharByChar Contacts/Gestor/RT, Anti-Wipe
+// bridge.js — Final Omega v8.1 (Sunshine Edition)
+// Ultimate Sync, Toast Annihilator, COM Dropdown, Local API
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -9,7 +9,7 @@
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE E ESPERAS
+  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO DE TOASTS
   // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -73,6 +73,20 @@
   }
 
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  // NOVA LÓGICA DE ANIQUILAÇÃO DE TOASTS (Sem acionar o reload da ANTT)
+  function limparToasts() {
+      var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+      // Desarma a bomba-relógio do Toastr
+      if (w.toastr && w.toastr.options) {
+          w.toastr.options.onHidden = null;
+          w.toastr.options.onCloseClick = null;
+          w.toastr.clear();
+      }
+      // Arranca do DOM na força bruta
+      var tc = document.getElementById('toast-container');
+      if (tc) { tc.innerHTML = ''; tc.remove(); }
+  }
 
   function typeSlowly(el, text, ms) {
     ms = ms || 80;
@@ -238,7 +252,6 @@
     executarFluxo(msg);
   }
 
-  // PORTA DE ENTRADA PARA O PAINEL MANUAL
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
@@ -448,7 +461,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (A RESPIRAÇÃO DOS MODAIS)
+  // PREENCHIMENTO DE DADOS (A RESPIRAÇÃO DOS MODAIS E DROPDOWN)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
@@ -460,16 +473,15 @@
     if(btn){ btn.click(); }
 
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
-    // RESPIRAÇÃO DO MODAL: Aguarda o framework resetar o form
     await delay(1500); 
     
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
-        selTipo.value = '1';
+        selTipo.value = 'COM'; 
         selTipo.dispatchEvent(new Event('change',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
     }
-    await delay(500);
+    await delay(1000); 
 
     if(cf){ 
         cf.removeAttribute('disabled');
@@ -480,7 +492,7 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        await delay(2500); // Aguarda o ViaCEP do Governo
+        await delay(2500); 
     }
 
     var f = getVisible('#Logradouro'); if(f){ f.value=d.logradouro||'0'; f.dispatchEvent(new Event('change',{bubbles:true})); }
@@ -497,6 +509,7 @@
     }
     await delay(500);
 
+    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
     if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
   }
@@ -509,7 +522,6 @@
     btn.click(); 
 
     var cf = await waitForVisible('#Contato', 5000);
-    // RESPIRAÇÃO DO MODAL
     await delay(1500);
     
     var selTipo = getVisible('#CodigoTipoContato');
@@ -532,6 +544,7 @@
     }
     await delay(500);
 
+    limparToasts();
     var bs = getVisible('.modal .btn-salvar-contato, .modal .btn-primary');
     if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
 
@@ -553,7 +566,6 @@
     btn.click(); 
 
     var sel = await waitForVisible('.modal.show select, .modal.in select', 10000);
-    // RESPIRAÇÃO DO MODAL
     await delay(1500);
 
     if(sel) {
@@ -579,7 +591,7 @@
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
-    await delay(3000); // Aguarda a busca de nome no AJAX
+    await delay(3000); 
 
     for(var i=0; i<30; i++){
         var nf = getVisible('.modal #Nome, .modal input[name="Nome"]');
@@ -592,6 +604,7 @@
     });
     await delay(500);
 
+    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
     if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
   }
@@ -605,7 +618,6 @@
     btn.click();
 
     var cf = await waitForVisible('.modal #Cpf', 10000);
-    // RESPIRAÇÃO DO MODAL
     await delay(1500);
 
     if(cf){
@@ -618,7 +630,7 @@
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
-    await delay(3000); // Aguarda a busca de nome no AJAX
+    await delay(3000); 
 
     for(var i=0; i<30; i++){
         var nf = getVisible('.modal #Nome');
@@ -631,6 +643,7 @@
     });
     await delay(500);
 
+    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
     if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
   }
@@ -662,16 +675,27 @@
     btnN.click();
     
     var cp = await waitForVisible('#Placa', 10000); 
+    await delay(1500); 
+
     cp.removeAttribute('disabled');
+    cp.focus();
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
     
     await new Promise(function(resolve){
         if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
         else typeSlowly(cp, pLimpa, 80).then(resolve);
     });
+    cp.dispatchEvent(new Event('blur',{bubbles:true}));
 
-    var cr=getVisible('#Renavam');cr.removeAttribute('disabled');cr.value=renavam;
-    cr.dispatchEvent(new Event('input',{bubbles:true})); cr.dispatchEvent(new Event('change',{bubbles:true})); cr.dispatchEvent(new Event('blur',{bubbles:true})); await delay(500);
+    var cr=getVisible('#Renavam');
+    if(cr) {
+        cr.removeAttribute('disabled');
+        cr.value=renavam;
+        cr.dispatchEvent(new Event('input',{bubbles:true})); 
+        cr.dispatchEvent(new Event('change',{bubbles:true})); 
+        cr.dispatchEvent(new Event('blur',{bubbles:true})); 
+    }
+    await delay(500);
     
     var bv = getVisible('#verificar, #btnBuscarVeiculo');
     if(bv) bv.click();
@@ -699,6 +723,8 @@
     }
 
     await delay(500);
+
+    limparToasts();
 
     var bs = getVisible('.btn-salvar-veiculo, .btn-confirmar-inclusao');
     if(bs){ bs.removeAttribute('disabled'); bs.click(); log('Salvo: '+placa,'ok'); } 
@@ -875,6 +901,7 @@
     var cp = await waitForVisible('#Placa', 5000);
     if(cp){
         cp.removeAttribute('disabled');
+        cp.focus();
         var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
         await new Promise(function(resolve){
             if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
@@ -932,6 +959,8 @@
         }
     }
     await delay(1000);
+
+    limparToasts();
 
     enviarStatus('running','Salvando...',{step:'arrendamento_salvar'}); var btnS=document.querySelector('#btnSalvar,.btn-salvarContrato');if(btnS)btnS.click();await delay(3000);
     try{
