@@ -1,12 +1,14 @@
-// pages/cadastro.js — modulo: Cadastro e Movimentacao de Frota (v64 — refatorado)
+// pages/cadastro.js — modulo: Cadastro e Movimentacao de Frota (Execução Local Liberada)
 (function(){
-  var U = window.OmegaUtils;
+  console.log('[OMEGA][cadastro] v65 carregado');
+  var U   = window.OmegaUtils;
   var jqR = unsafeWindow.jQuery || unsafeWindow.$;
-  var EX = window.OmegaExtractor;
-  
+  var EX  = window.OmegaExtractor;
+  if(!U) { console.error('[OMEGA][cadastro] OmegaUtils nao encontrado!'); return; }
+
+  function htmlDrop(id, label, sub){ return '<div id="'+id+'" class="om-dropzone" style="padding:10px;margin-bottom:6px"><div class="om-drop-txt" id="'+id+'-txt">'+label+'<br><span>'+(sub||'PDF ou imagem')+'</span></div></div><input type="file" id="'+id+'-file" accept=".pdf,image/*" style="display:none">'; }
   function val(id){var el=document.getElementById(id);return el?el.value.trim():'';}
   function set(id,val){var el=document.getElementById(id);if(el)el.value=val||'';}
-  function htmlDrop(id, label, sub){ return '<div id="'+id+'" class="om-dropzone" style="padding:10px;margin-bottom:6px"><div class="om-drop-txt" id="'+id+'-txt">'+label+'<br><span>'+(sub||'PDF ou imagem')+'</span></div></div><input type="file" id="'+id+'-file" accept=".pdf,image/*" style="display:none">'; }
 
   U.registrarAba('cadastro', 'Cadastro', ''
     +'<div id="omega-cad-tipo-btns" class="om-grid om-grid-2 om-mb">'
@@ -55,36 +57,24 @@
   document.getElementById('omega-cad-btn-cpf').addEventListener('click',function(){document.getElementById('omega-cad-tipo-btns').style.display='none';document.getElementById('omega-cad-form-cpf').style.display='block';});
   document.getElementById('omega-cad-btn-cnpj').addEventListener('click',function(){document.getElementById('omega-cad-tipo-btns').style.display='none';document.getElementById('omega-cad-form-cnpj').style.display='block';});
 
-  // COMUNICAÇÃO DE TAREFA MANUAL RESTAURADA
-  function dispararTarefaServidor(modo, transportador, st, btn) {
-    var vps = (typeof GM_getValue !== 'undefined') ? GM_getValue('omega_vps_url', '') : '';
-    var token = (typeof GM_getValue !== 'undefined') ? GM_getValue('omega_vps_token', '') : '';
-    var devId = (typeof GM_getValue !== 'undefined') ? GM_getValue('omega_device_id', '') : '';
-    
-    if(!vps) return U.box(st, false, 'Configure o Bridge primeiro.');
-    var apiUrl = vps.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/task/send';
-    
-    btn.innerHTML = 'Enviando...'; btn.disabled = true;
-    
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", apiUrl, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    if(token) xhr.setRequestHeader('x-session', token);
-    
-    xhr.onreadystatechange = function() {
-        if (this.readyState === XMLHttpRequest.DONE) {
-            btn.innerHTML = '&#9654; Iniciar Automacao'; btn.disabled = false;
-            if (this.status === 200) U.box(st, true, 'Tarefa enviada com sucesso!');
-            else U.box(st, false, 'Falha ao enviar a tarefa pro servidor.');
-        }
-    };
-    xhr.send(JSON.stringify({ deviceId: devId, task: { modo: modo, transportador: transportador } }));
+  // ── LÓGICA DE INTEGRAÇÃO LOCAL (Sem precisar de VPS) ──
+  function dispararTarefaLocal(modo, transportador, st, btn) {
+      if (typeof unsafeWindow.OmegaStartLocalTask === 'function') {
+          btn.innerHTML = 'Executando...'; btn.disabled = true;
+          // Dispara a tarefa simulando o formato que viria do servidor
+          var taskData = { modo: modo, transportador: transportador };
+          unsafeWindow.OmegaStartLocalTask(taskData);
+          U.box(st, true, 'Automação local iniciada com sucesso!');
+          setTimeout(function(){ btn.innerHTML = '▶ Iniciar Automacao'; btn.disabled = false; }, 3000);
+      } else {
+          U.box(st, false, 'O motor (Bridge) não está ativo na página. Recarregue a página.');
+      }
   }
 
   document.getElementById('omega-cad-iniciar-cnpj').addEventListener('click', function(){
       var st = document.getElementById('omega-cad-status-cnpj');
       var t = { 
-          cnpj: val('omega-cad-cnpj-cpf-socio'), // Placeholder (se CNPJ real estiver vazio, usamos os dados preenchidos)
+          cnpj: val('omega-cad-cnpj-cpf-socio'), // Caso nao tenha CNPJ, ele usa o getTargetDoc do bridge
           cep: val('omega-cad-cnpj-cep'),
           numero: val('omega-cad-cnpj-numero'),
           logradouro: val('omega-cad-cnpj-logradouro'),
@@ -94,7 +84,7 @@
           email: val('omega-cad-cnpj-email'),
           cpf_socio: val('omega-cad-cnpj-cpf-socio')
       };
-      dispararTarefaServidor('cadcnpj', t, st, this);
+      dispararTarefaLocal('cadcnpj', t, st, this);
   });
 
   document.getElementById('omega-cad-iniciar-cpf').addEventListener('click', function(){
@@ -108,22 +98,7 @@
           bairro: val('omega-cad-bairro'),
           complemento: val('omega-cad-complemento')
       };
-      dispararTarefaServidor('cadcpf', t, st, this);
+      dispararTarefaLocal('cadcpf', t, st, this);
   });
 
-  window.OmegaUtils.preencherVeiculo = function(item, st, cp, pv, cr, lib) {
-      U.digitarCharAChar(cp, pv, { delay: 80, delayEspecial: {4: 150}, onDone: function() {
-          cr.removeAttribute('disabled'); cr.value = item.renavam || ''; cr.dispatchEvent(new Event('input', {bubbles:true})); cr.dispatchEvent(new Event('change', {bubbles:true})); cr.dispatchEvent(new Event('blur', {bubbles:true}));
-          U.aguardarElemento('#btnBuscarVeiculo', function(bv) {
-              if(U.guardClique(bv, 3000)) jqR.ajax({ type: 'GET', url: '/Veiculo/BuscarVeiculo', cache: false, data: { placa: cp.value.toUpperCase(), renavam: cr.value }, success: function() { bv.click(); }, error: function() { bv.click(); } });
-              U.aguardarElemento('#Tara', function(tara) {
-                  if(!tara.value || tara.value === '') { tara.removeAttribute('disabled'); tara.value = '2'; jqR(tara).trigger('input').trigger('change'); }
-                  U.aguardarElemento('.btn-salvar-veiculo, .btn-confirmar-inclusao', function(bs) {
-                      if(U.guardClique(bs, 5000)) { bs.removeAttribute('disabled'); bs.click(); U.box(st, true, 'Veiculo salvo! Placa: <b>' + cp.value + '</b>'); } else { U.box(st, false, 'Botao Salvar nao encontrado.'); }
-                      if (lib) lib();
-                  });
-              });
-          });
-      }});
-  };
 })();
