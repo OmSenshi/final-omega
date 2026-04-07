@@ -17,7 +17,7 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
 .orb:nth-child(1){width:520px;height:520px;background:radial-gradient(circle,#1a5fd4,transparent 70%);top:-12%;left:-10%;animation-duration:22s}
 .orb:nth-child(2){width:420px;height:420px;background:radial-gradient(circle,#1557b0,transparent 70%);bottom:-15%;right:-5%;animation-duration:18s;animation-delay:-5s}
 .orb:nth-child(3){width:320px;height:320px;background:radial-gradient(circle,#1a73e8,transparent 70%);top:45%;left:55%;animation-duration:25s;animation-delay:-10s}
-.orb:nth-child(4){width:200px;height:200px;background:radial-gradient(circle,#d4a51a,transparent 70%);top:20%;right:20%;animation-duration:30s;animation-delay:-15s;opacity:.12}
+.orb:nth-child(4){width:200px;height:200px;background:radial-gradient(circle,#534ab7,transparent 70%);top:20%;right:20%;animation-duration:30s;animation-delay:-15s;opacity:.15}
 @keyframes float{
   0%,100%{transform:translate(0,0) scale(1)}
   25%{transform:translate(40px,-30px) scale(1.05)}
@@ -39,19 +39,18 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
 @keyframes cardIn{from{opacity:0;transform:translateY(30px) scale(.96)}to{opacity:1;transform:none}}
 
 /* ── Logo ── */
-.logo{text-align:center;margin-bottom:8px}
+.logo{text-align:center;margin-bottom:32px}
 .logo-icon{width:56px;height:56px;margin:0 auto 16px;border-radius:16px;background:linear-gradient(135deg,#1a73e8,#1557b0);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(26,115,232,.3)}
 .logo-icon svg{width:28px;height:28px}
-.logo-text{font-size:34px;font-weight:900;letter-spacing:10px;background:linear-gradient(135deg,#5a9cf5 0%,#8bb8fa 40%,#d4a51a 80%,#f0c850 100%);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shimmer 5s ease-in-out infinite}
+.logo-text{font-size:34px;font-weight:900;letter-spacing:10px;background:linear-gradient(135deg,#5a9cf5 0%,#a78bfa 50%,#5a9cf5 100%);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shimmer 4s ease-in-out infinite}
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 .logo-sub{font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.25);text-transform:uppercase;margin-top:6px;font-weight:300;font-style:italic}
-.logo-motto{font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.15);margin-top:16px;margin-bottom:8px;font-weight:300}
 
 /* ── Form ── */
 .field{margin-bottom:20px;position:relative}
 .field label{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,.35);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
 .field input{width:100%;padding:14px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;font-size:15px;color:#e0e4ef;font-family:'Outfit',sans-serif;outline:none;transition:all .3s}
-.field input:focus{border-color:rgba(26,115,232,.5);background:rgba(255,255,255,.06);box-shadow:0 0 0 3px rgba(26,115,232,.1)}
+.field input:focus{border-color:rgba(90,156,245,.4);background:rgba(255,255,255,.06);box-shadow:0 0 0 3px rgba(90,156,245,.08)}
 .field input::placeholder{color:rgba(255,255,255,.15)}
 
 .btn-login{width:100%;padding:15px;border:none;border-radius:12px;font-size:15px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:1px;cursor:pointer;transition:all .3s;background:linear-gradient(135deg,#1a73e8,#1557b0);color:#fff;box-shadow:0 4px 24px rgba(26,115,232,.35);position:relative;overflow:hidden}
@@ -66,6 +65,7 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
 
 /* ── Rodapé ── */
 .version{text-align:center;margin-top:24px;font-size:10px;color:rgba(255,255,255,.12);letter-spacing:2px;line-height:1.6}
+.version .motto{font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.15);font-style:italic;display:block;margin-top:6px}
 
 /* ── Marca d'água Sunshine ── */
 .watermark{position:fixed;bottom:20px;right:24px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;letter-spacing:4px;color:rgba(255,255,255,.04);z-index:0;pointer-events:none;text-transform:uppercase;writing-mode:vertical-rl}
@@ -76,6 +76,12 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
   .logo-text{font-size:26px;letter-spacing:6px}
   .logo-icon{width:48px;height:48px;border-radius:14px}
   .logo-icon svg{width:24px;height:24px}
+}
+@media(max-width:340px){
+  .logo-text{font-size:22px;letter-spacing:4px}
+  .logo-sub{font-size:9px;letter-spacing:3px}
+  .field input{padding:12px 14px;font-size:14px}
+  .btn-login{padding:13px;font-size:14px}
 }
 </style>
 </head>
@@ -98,7 +104,6 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
     </div>
     <div class="logo-text">OMEGA</div>
     <div class="logo-sub">Painel de Controle</div>
-    <div class="logo-motto">I am all as I am none</div>
   </div>
 
   <div class="field">
@@ -109,7 +114,10 @@ body{font-family:'Outfit',sans-serif;background:#0a0e1a;color:#e0e4ef;min-height
   <button class="btn-login" id="btn" onclick="doLogin()">Entrar</button>
 
   <div class="error" id="err"></div>
-  <div class="version">OMEGA PAINEL v8.0 — Sunshine Edition</div>
+  <div class="version">
+    OMEGA PAINEL v8.0 — Sunshine Edition
+    <span class="motto">I am all as I am none</span>
+  </div>
 </div>
 
 <div class="watermark">Sunshine</div>
