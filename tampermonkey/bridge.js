@@ -1,5 +1,5 @@
 // bridge.js — Final Omega v5.6 (Sunshine Edition)
-// HTTP Polling, Reatividade Vue/React, Roteamento e Sincronia de Eixos
+// Fix URL Maiúscula + Polling Verificado + Reatividade Vue
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -116,7 +116,6 @@
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
   }
 
-  // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent=''
@@ -190,14 +189,15 @@
 
     function conectarGov(){
       if(paused||!VPS_URL)return;
-      atualizarGovStatus('Conectado ✓ — HTTP Polling','ok');
-      connected=true;
       if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
       
       if(govPollInterval) clearInterval(govPollInterval);
-      var apiUrl = VPS_URL.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
+      
+      // FORÇAR MINÚSCULAS PARA O REPLACE FUNCIONAR
+      var baseWs = VPS_URL.toLowerCase().trim();
+      var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
 
-      govPollInterval = setInterval(function() {
+      function fazerPoll() {
           if(paused||!VPS_URL)return;
           GM_xmlhttpRequest({
               method: "POST", url: apiUrl,
@@ -205,21 +205,36 @@
               data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
               onload: function(res) {
                   if(res.status===200){
+                      if(!connected){
+                          connected=true;
+                          atualizarGovStatus('Conectado ✓ — HTTP Polling','ok');
+                      }
                       try{
                           var data=JSON.parse(res.responseText);
                           if(data.type==='task') receberTarefa(data.task);
                           if(data.type==='stop') pararTarefa();
                       }catch(e){}
+                  } else {
+                      connected=false;
+                      atualizarGovStatus('Erro Polling (Status '+res.status+')','err');
                   }
+              },
+              onerror: function() {
+                  connected=false;
+                  atualizarGovStatus('Erro de Conexao (Servidor offline?)','err');
               }
           });
-      }, 3000);
+      }
+
+      fazerPoll();
+      govPollInterval = setInterval(fazerPoll, 3000);
     }
 
     var _enviarStatusOriginal=enviarStatus;
     enviarStatus=function(status,message,extra){
       if(isGovBr && VPS_URL){
-        var apiUrl = VPS_URL.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
+        var baseWs = VPS_URL.toLowerCase().trim();
+        var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
         var payload = { deviceId: DEVICE_ID, status: status, message: message||'' };
         if(extra) Object.assign(payload, extra);
         GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify(payload) });
@@ -242,10 +257,13 @@
 
   function conectar(){
     if(paused||!VPS_URL)return;if(ws){try{ws.close();}catch(e){}ws=null;}log('Conectando...','ok');
-    var wsUrl = VPS_URL;
+    
+    // FIX DA URL MAIUSCULA
+    var wsUrl = VPS_URL.toLowerCase().trim();
     if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws');
     if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
     var url=wsUrl+(VPS_TOKEN?((wsUrl.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
+    
     try{ws=new WebSocket(url);}catch(e){log('URL invalida','err');return;}
     ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');U.toast('Bridge conectado',true);}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
     ws.onmessage=function(evt){var msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);}if(msg.type==='task')receberTarefa(msg);if(msg.type==='stop')pararTarefa();};
@@ -259,14 +277,9 @@
 
   function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),d=document.getElementById('omega-bridge-disconnect');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';d.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';d.style.display='block';}else{c.style.display='block';p.style.display='none';d.style.display=VPS_URL?'block':'none';}}
 
-  // ══════════════════════════════════════════════════════════════
-  // ROTEAMENTO & LOGIN GOV.BR
-  // ══════════════════════════════════════════════════════════════
-
   function receberTarefa(msg){
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
-    // Solução para o Loop de Login (Se tem credenciais E já tá na ANTT, executa e não volta pro Gov.br)
     if(msg.credenciais&&msg.credenciais.cpf&&msg.credenciais.senha){
       if(isANTT){ executarFluxo(msg); return; }
       salvarEstado('login_govbr',msg);
@@ -285,7 +298,6 @@
       var btnC=await waitForElement('#enter-account-id',5000);btnC.click();await delay(3000);
       try{
         var senhaF=await waitForElement('input#password[type="password"]',20000);await delay(1000);
-        // INJEÇÃO REATIVA VUE.JS
         senhaF.focus(); senhaF.click(); await delay(500);
         for(var i=0; i<cred.senha.length; i++){
             senhaF.value = cred.senha.substring(0, i+1);
@@ -302,10 +314,6 @@
     }catch(e){log('Erro login: '+e.message,'err');enviarStatus('error','Login: '+e.message);}
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // INCLUSÃO DE VEÍCULO (Sincronia Ajax / Eixos)
-  // ══════════════════════════════════════════════════════════════
-
   async function processarInclusaoVeiculo(placa,renavam){
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
     var btnN=document.querySelector('[data-action*="VeiculoPedido/Novo"],[data-action*="Veiculo/Novo"]');
@@ -313,7 +321,6 @@
     btnN.click();await waitForElement('#Placa',10000);await delay(500);
     var cp=document.getElementById('Placa');cp.removeAttribute('disabled');
     
-    // Simula a digitação idêntica ao arrendamento.js (delay extra no 4º digito da placa)
     cp.value=''; cp.focus();
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
     for(var k=0; k<pLimpa.length; k++){
@@ -329,8 +336,6 @@
     try{var bv=await waitForElement('#verificar,#btnBuscarVeiculo',5000);bv.click();}catch(e){var jq=unsafeWindow.jQuery;if(jq)jq.ajax({type:'GET',url:'/Veiculo/BuscarVeiculo',cache:false,data:{placa:placa,renavam:renavam}});}
     
     enviarStatus('running','Aguardando ANTT (Eixos)...',{step:'veiculo_wait'});
-    
-    // ESPERA DEFINITIVA DOS EIXOS: Protege contra o erro de campo obrigatório vazio
     var waitLimit = 0;
     while(waitLimit < 30) {
         var eixos = document.getElementById('Eixos');
@@ -348,10 +353,6 @@
     else throw new Error('Botao salvar nao encontrado');
     await delay(1500);try{document.querySelectorAll('.toast-close-button').forEach(function(b){b.click();});}catch(e){}
   }
-
-  // ══════════════════════════════════════════════════════════════
-  // RESGATE & FLUXOS GERAIS
-  // ══════════════════════════════════════════════════════════════
 
   async function recuperarPedidoPreso(cpfCnpj) {
     log('Resgate: pedido preso detectado','warn'); enviarStatus('running','Resgatando pedido preso...',{step:'resgate'});
