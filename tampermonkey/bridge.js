@@ -149,13 +149,15 @@
     var govCss=document.createElement('style');
     govCss.textContent=''
       +'#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}'
-      +'#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px}'
+      +'#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}'
       +'#omega-gov-panel .og-row{margin-bottom:6px}'
       +'#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}'
       +'#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}'
       +'#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}'
       +'.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}'
       +'.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}'
+      +'.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}'
+      +'.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}'
       +'#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}'
       +'.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}'
       +'.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}'
@@ -165,27 +167,42 @@
     var govPanel=document.createElement('div');
     govPanel.id='omega-gov-panel';
     var temConfig=!!VPS_URL;
+    var govRetryCount=0;
+    var GOV_MAX_RETRIES=3;
 
-    if(temConfig){
-      // Já configurado — mostra status compacto + conecta automaticamente
+    function renderGovForm(){
       govPanel.innerHTML=''
-        +'<div class="og-title">OMEGA</div>'
-        +'<div id="og-conn-status" class="og-status og-status-info">Conectando ao VPS...</div>'
-        +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
-    } else {
-      // Sem config — formulário
-      govPanel.innerHTML=''
-        +'<div class="og-title">OMEGA — Bridge</div>'
-        +'<div class="og-row"><input id="og-url" placeholder="wss://omhk.com.br/ws" value=""></div>'
-        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value=""><input id="og-name" placeholder="Nome" value=""></div>'
+        +'<div class="og-title"><span>OMEGA — Bridge</span></div>'
+        +'<div class="og-row"><input id="og-url" placeholder="wss://omhk.com.br/ws" value="'+(VPS_URL||'')+'"></div>'
+        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div>'
         +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
         +'<div id="og-conn-status" class="og-status" style="display:none"></div>';
+      bindGovEvents();
     }
 
-    document.body.appendChild(govPanel);
+    function renderGovStatus(statusText, tipo){
+      govPanel.innerHTML=''
+        +'<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div>'
+        +'<div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div>'
+        +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
+      // Botão reset sempre presente
+      var resetBtn=document.getElementById('og-reset');
+      if(resetBtn){
+        resetBtn.addEventListener('click',function(){
+          // Para tudo, limpa credenciais, volta pro formulário
+          paused=true;
+          if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}
+          if(ws){try{ws.close();}catch(e){}ws=null;}
+          connected=false;
+          gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name','');
+          VPS_URL='';VPS_TOKEN='';DEVICE_NAME='';
+          govRetryCount=0;
+          renderGovForm();
+        });
+      }
+    }
 
-    // Atualiza o status visual do mini-painel
-    function atualizarGovStatus(texto, tipo){
+    function atualizarGovStatus(texto,tipo){
       var el=document.getElementById('og-conn-status');
       if(!el)return;
       el.style.display='block';
@@ -193,47 +210,95 @@
       el.textContent=texto;
     }
 
-    // Sobrescreve o log pra também atualizar o mini-painel
-    var _logOriginal = log;
-    log = function(msg, tipo){
-      _logOriginal(msg, tipo);
-      // Atualiza mini-painel Gov.br com últimos status
-      var taskEl=document.getElementById('og-task-status');
-      if(taskEl) taskEl.textContent=msg;
-    };
-
-    // Eventos do formulário
-    var saveBtn=document.getElementById('og-save');
-    if(saveBtn){
-      saveBtn.addEventListener('click',function(){
-        var url=(document.getElementById('og-url')||{}).value||'';
-        var token=(document.getElementById('og-token')||{}).value||'';
-        var name=(document.getElementById('og-name')||{}).value||'Dispositivo';
-        url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
-        if(!url){atualizarGovStatus('URL vazia','err');return;}
-        VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
-        gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
-        paused=false;errorCount=0;resetBackoff();
-        // Troca formulário por status compacto
-        govPanel.innerHTML=''
-          +'<div class="og-title">OMEGA</div>'
-          +'<div id="og-conn-status" class="og-status og-status-info">Conectando...</div>'
-          +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
-        conectar();
-      });
+    function bindGovEvents(){
+      var saveBtn=document.getElementById('og-save');
+      if(saveBtn){
+        saveBtn.addEventListener('click',function(){
+          var url=(document.getElementById('og-url')||{}).value||'';
+          var token=(document.getElementById('og-token')||{}).value||'';
+          var name=(document.getElementById('og-name')||{}).value||'Dispositivo';
+          url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
+          if(!url){atualizarGovStatus('URL vazia','err');return;}
+          VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
+          gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
+          paused=false;errorCount=0;govRetryCount=0;resetBackoff();
+          renderGovStatus('Conectando...','info');
+          conectarGov();
+        });
+      }
+      var hideBtn=document.getElementById('og-hide');
+      if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
     }
-    var hideBtn=document.getElementById('og-hide');
-    if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
 
-    // Hook no WebSocket pra atualizar status visual do Gov.br
-    var _conectarOriginal = conectar;
-    var _origOnOpen = null;
-    // Monitoramos connected pra atualizar o mini-painel
-    setInterval(function(){
-      if(connected) atualizarGovStatus('Conectado ✓ (1 disp. livre)','ok');
-      else if(paused) atualizarGovStatus('Pausado','err');
-      else if(VPS_URL) atualizarGovStatus('Reconectando...','info');
-    }, 2000);
+    // ── WebSocket específico do Gov.br (não usa conectar() global pra evitar conflito) ──
+    function conectarGov(){
+      if(paused||!VPS_URL)return;
+      if(ws){try{ws.close();}catch(e){}ws=null;}
+
+      govRetryCount++;
+      if(govRetryCount>GOV_MAX_RETRIES){
+        atualizarGovStatus('Falha apos '+GOV_MAX_RETRIES+' tentativas. Clique Resetar.','err');
+        log('Gov.br: max retries','err');
+        return;
+      }
+
+      log('Gov.br: tentativa '+govRetryCount+'/'+GOV_MAX_RETRIES,'ok');
+      atualizarGovStatus('Conectando... ('+govRetryCount+'/'+GOV_MAX_RETRIES+')','info');
+
+      var fullUrl=VPS_URL+(VPS_TOKEN?((VPS_URL.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
+      try{ws=new WebSocket(fullUrl);}catch(e){
+        atualizarGovStatus('URL invalida','err');
+        log('Gov.br: URL invalida '+e.message,'err');
+        return;
+      }
+
+      ws.onopen=function(){
+        connected=true;govRetryCount=0;resetBackoff();
+        // Registro idêntico ao da ANTT
+        if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
+        ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME+' (Gov.br)'}));
+        atualizarGovStatus('Conectado ✓ — Dispositivo livre','ok');
+        log('Gov.br: conectado e registrado','ok');
+      };
+
+      ws.onmessage=function(evt){
+        var msg;try{msg=JSON.parse(evt.data);}catch{return;}
+        if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);log('Gov.br: registrado '+DEVICE_ID,'ok');}
+        if(msg.type==='task'){receberTarefa(msg);var ts=document.getElementById('og-task-status');if(ts)ts.textContent='Tarefa: '+msg.modo;}
+        if(msg.type==='stop')pararTarefa();
+      };
+
+      ws.onclose=function(evt){
+        connected=false;
+        if(evt.code===4001){atualizarGovStatus('Token incorreto','err');log('Gov.br: token incorreto','err');return;}
+        if(!paused&&VPS_URL&&govRetryCount<GOV_MAX_RETRIES){
+          var secs=Math.round(reconnectDelay/1000);
+          atualizarGovStatus('Desconectado. Retry em '+secs+'s ('+govRetryCount+'/'+GOV_MAX_RETRIES+')','err');
+          reconnectTimer=setTimeout(function(){nextBackoff();conectarGov();},reconnectDelay);
+        } else if(govRetryCount>=GOV_MAX_RETRIES){
+          atualizarGovStatus('Falha. Clique Resetar pra reconfigurar.','err');
+        }
+      };
+
+      ws.onerror=function(){
+        log('Gov.br: erro WS','err');
+      };
+    }
+
+    // Render inicial
+    if(temConfig){
+      renderGovStatus('Conectando...','info');
+      document.body.appendChild(govPanel);
+      // Conecta após o DOM estabilizar
+      setTimeout(function(){conectarGov();},2000);
+    } else {
+      renderGovForm();
+      document.body.appendChild(govPanel);
+    }
+
+    // Sobrescreve log pra atualizar task status
+    var _logOriginal=log;
+    log=function(msg,tipo){_logOriginal(msg,tipo);var ts=document.getElementById('og-task-status');if(ts)ts.textContent=msg;};
   }
 
   // ══════════════════════════════════════════════════════════════
