@@ -149,7 +149,6 @@
     var govCss=document.createElement('style');
     govCss.textContent=''
       +'#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}'
-      +'#omega-gov-panel.collapsed{padding:8px 14px;min-width:auto;cursor:pointer}'
       +'#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px}'
       +'#omega-gov-panel .og-row{margin-bottom:6px}'
       +'#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}'
@@ -163,55 +162,78 @@
       +'.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
     document.head.appendChild(govCss);
 
-    // Cria o painel
     var govPanel=document.createElement('div');
     govPanel.id='omega-gov-panel';
-
-    // Se já tem credenciais salvas, mostra versão compacta
     var temConfig=!!VPS_URL;
-    var estadoPendente=lerEstado();
-    var temLogin=estadoPendente&&estadoPendente.estado==='login_govbr';
 
-    if(temConfig&&temLogin){
-      // Modo automático: já conectado e processando login
+    if(temConfig){
+      // Já configurado — mostra status compacto + conecta automaticamente
       govPanel.innerHTML=''
         +'<div class="og-title">OMEGA</div>'
-        +'<div class="og-status og-status-info">Processando login automatico...</div>';
-    } else if(temConfig){
-      // Conectado mas sem tarefa de login
-      govPanel.innerHTML=''
-        +'<div class="og-title">OMEGA</div>'
-        +'<div class="og-status og-status-ok">Bridge configurado ✓</div>'
-        +'<div style="margin-top:6px;font-size:10px;color:#555e70">Aguardando tarefa do VPS</div>';
+        +'<div id="og-conn-status" class="og-status og-status-info">Conectando ao VPS...</div>'
+        +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
     } else {
-      // Sem configuração: formulário pra preencher
+      // Sem config — formulário
       govPanel.innerHTML=''
         +'<div class="og-title">OMEGA — Bridge</div>'
-        +'<div class="og-row"><input id="og-url" placeholder="wss://omhk.com.br/ws" value="'+(VPS_URL||'')+'"></div>'
-        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div>'
-        +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Salvar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
-        +'<div id="og-status" class="og-status" style="display:none"></div>';
+        +'<div class="og-row"><input id="og-url" placeholder="wss://omhk.com.br/ws" value=""></div>'
+        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value=""><input id="og-name" placeholder="Nome" value=""></div>'
+        +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
+        +'<div id="og-conn-status" class="og-status" style="display:none"></div>';
     }
 
     document.body.appendChild(govPanel);
 
-    // Eventos do formulário Gov.br
+    // Atualiza o status visual do mini-painel
+    function atualizarGovStatus(texto, tipo){
+      var el=document.getElementById('og-conn-status');
+      if(!el)return;
+      el.style.display='block';
+      el.className='og-status og-status-'+(tipo||'info');
+      el.textContent=texto;
+    }
+
+    // Sobrescreve o log pra também atualizar o mini-painel
+    var _logOriginal = log;
+    log = function(msg, tipo){
+      _logOriginal(msg, tipo);
+      // Atualiza mini-painel Gov.br com últimos status
+      var taskEl=document.getElementById('og-task-status');
+      if(taskEl) taskEl.textContent=msg;
+    };
+
+    // Eventos do formulário
     var saveBtn=document.getElementById('og-save');
     if(saveBtn){
       saveBtn.addEventListener('click',function(){
-        var url=document.getElementById('og-url').value.trim();
-        var token=document.getElementById('og-token').value.trim();
-        var name=document.getElementById('og-name').value.trim()||'Dispositivo';
-        if(!url){var st=document.getElementById('og-status');st.style.display='block';st.className='og-status og-status-err';st.textContent='URL vazia';return;}
+        var url=(document.getElementById('og-url')||{}).value||'';
+        var token=(document.getElementById('og-token')||{}).value||'';
+        var name=(document.getElementById('og-name')||{}).value||'Dispositivo';
+        url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
+        if(!url){atualizarGovStatus('URL vazia','err');return;}
         VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
         gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
-        var st=document.getElementById('og-status');st.style.display='block';st.className='og-status og-status-ok';st.textContent='Salvo! Bridge pronto.';
-        // Conecta imediatamente
+        paused=false;errorCount=0;resetBackoff();
+        // Troca formulário por status compacto
+        govPanel.innerHTML=''
+          +'<div class="og-title">OMEGA</div>'
+          +'<div id="og-conn-status" class="og-status og-status-info">Conectando...</div>'
+          +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
         conectar();
       });
     }
     var hideBtn=document.getElementById('og-hide');
     if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
+
+    // Hook no WebSocket pra atualizar status visual do Gov.br
+    var _conectarOriginal = conectar;
+    var _origOnOpen = null;
+    // Monitoramos connected pra atualizar o mini-painel
+    setInterval(function(){
+      if(connected) atualizarGovStatus('Conectado ✓ (1 disp. livre)','ok');
+      else if(paused) atualizarGovStatus('Pausado','err');
+      else if(VPS_URL) atualizarGovStatus('Reconectando...','info');
+    }, 2000);
   }
 
   // ══════════════════════════════════════════════════════════════
