@@ -116,7 +116,7 @@
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){if(VPS_URL&&!connected&&!paused)conectar();if(currentTask)requestWakeLock();}});
 
   // ══════════════════════════════════════════════════════════════
-  // ABA BRIDGE (só ANTT)
+  // ABA BRIDGE (ANTT) + MINI-PAINEL (Gov.br)
   // ══════════════════════════════════════════════════════════════
 
   if(isANTT&&U){
@@ -141,6 +141,77 @@
     document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
     document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
+  }
+
+  // ── MINI-PAINEL GOV.BR (independente do core.js) ──
+  if(isGovBr){
+    // Injeta CSS mínimo
+    var govCss=document.createElement('style');
+    govCss.textContent=''
+      +'#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}'
+      +'#omega-gov-panel.collapsed{padding:8px 14px;min-width:auto;cursor:pointer}'
+      +'#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px}'
+      +'#omega-gov-panel .og-row{margin-bottom:6px}'
+      +'#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}'
+      +'#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}'
+      +'#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}'
+      +'.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}'
+      +'.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}'
+      +'#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}'
+      +'.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}'
+      +'.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}'
+      +'.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
+    document.head.appendChild(govCss);
+
+    // Cria o painel
+    var govPanel=document.createElement('div');
+    govPanel.id='omega-gov-panel';
+
+    // Se já tem credenciais salvas, mostra versão compacta
+    var temConfig=!!VPS_URL;
+    var estadoPendente=lerEstado();
+    var temLogin=estadoPendente&&estadoPendente.estado==='login_govbr';
+
+    if(temConfig&&temLogin){
+      // Modo automático: já conectado e processando login
+      govPanel.innerHTML=''
+        +'<div class="og-title">OMEGA</div>'
+        +'<div class="og-status og-status-info">Processando login automatico...</div>';
+    } else if(temConfig){
+      // Conectado mas sem tarefa de login
+      govPanel.innerHTML=''
+        +'<div class="og-title">OMEGA</div>'
+        +'<div class="og-status og-status-ok">Bridge configurado ✓</div>'
+        +'<div style="margin-top:6px;font-size:10px;color:#555e70">Aguardando tarefa do VPS</div>';
+    } else {
+      // Sem configuração: formulário pra preencher
+      govPanel.innerHTML=''
+        +'<div class="og-title">OMEGA — Bridge</div>'
+        +'<div class="og-row"><input id="og-url" placeholder="wss://omhk.com.br/ws" value="'+(VPS_URL||'')+'"></div>'
+        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div>'
+        +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Salvar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
+        +'<div id="og-status" class="og-status" style="display:none"></div>';
+    }
+
+    document.body.appendChild(govPanel);
+
+    // Eventos do formulário Gov.br
+    var saveBtn=document.getElementById('og-save');
+    if(saveBtn){
+      saveBtn.addEventListener('click',function(){
+        var url=document.getElementById('og-url').value.trim();
+        var token=document.getElementById('og-token').value.trim();
+        var name=document.getElementById('og-name').value.trim()||'Dispositivo';
+        if(!url){var st=document.getElementById('og-status');st.style.display='block';st.className='og-status og-status-err';st.textContent='URL vazia';return;}
+        VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
+        gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
+        var st=document.getElementById('og-status');st.style.display='block';st.className='og-status og-status-ok';st.textContent='Salvo! Bridge pronto.';
+        // Conecta imediatamente
+        conectar();
+      });
+    }
+    var hideBtn=document.getElementById('og-hide');
+    if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -646,8 +717,9 @@
   // INICIALIZAÇÃO
   // ══════════════════════════════════════════════════════════════
 
-  if(isANTT&&VPS_URL&&!paused)setTimeout(function(){conectar();},2000);
+  // Auto-connect na ANTT E no Gov.br se tem URL salva
+  if(VPS_URL&&!paused)setTimeout(function(){conectar();},2000);
   setTimeout(verificarEstadoPendente,3000);
   if(isANTT&&U&&U.restaurarAbaSalva)setTimeout(function(){U.restaurarAbaSalva();},500);
-  console.log('[BRIDGE] v5.0 Sunshine — '+(isGovBr?'Gov.br':'ANTT'));
+  console.log('[BRIDGE] v5.1 Sunshine — '+(isGovBr?'Gov.br':'ANTT')+(VPS_URL?' — auto-connect':' — sem config'));
 })();
