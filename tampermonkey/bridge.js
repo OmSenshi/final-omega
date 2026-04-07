@@ -1,4 +1,4 @@
-// bridge.js — Final Omega v5.8 (Sunshine Edition)
+// bridge.js — Final Omega v6.0 (Sunshine Edition)
 // HTTP Polling nativo, Hack da Senha Vue.js, Safeload Gov.br, Roteamento e Eixos
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
@@ -244,7 +244,7 @@
       if(!isGovBr)_enviarStatusOriginal(status,message,extra);
     };
 
-    // ── O TRUQUE DE MESTRE: ESPERAR O VUE.JS CARREGAR ──
+    // ── ESPERAR O VUE.JS CARREGAR ──
     waitForElement('form, #accountId, .login-content', 15000).then(function() {
         document.body.appendChild(govPanel);
         if(temConfig){ 
