@@ -1,4 +1,4 @@
-// core.js — Omega Painel v3.2: UI responsiva + FAB + Memoria de Estado
+// core.js — Omega Painel v3.2: UI responsiva + FAB Esquerdo + Memoria Universal
 (function(){
   if(document.getElementById('antt-helper'))return;
 
@@ -69,27 +69,12 @@
     _gmSet('omega_aba_ativa',abaId);
   };
 
-  // ── Lógica de Memória do Minimizar ──
+  // ── Lógica de Memória do Minimizar UNIVERSAL (Sempre FAB) ──
   unsafeWindow.OmegaMinimizar = function(){
     var p=document.getElementById('antt-helper');
-    if(isMobile){
-      p.classList.add('om-hidden');
-      fab.style.display='flex';
-      _gmSet('omega_painel_min', '1');
-    } else {
-      var tabs=document.getElementById('omega-tabs'),cnt=document.getElementById('omega-content'),hr=p.querySelector('.om-hr'),rod=p.querySelector('.om-rodape'),btn=document.getElementById('omega-minimizar');
-      var min=p.getAttribute('data-minimizado')==='1';
-      var els=[tabs,cnt,hr,rod];
-      if(min){
-          els.forEach(function(el){if(el)el.style.display='';});
-          p.style.width='440px';p.setAttribute('data-minimizado','0');if(btn)btn.textContent='—';
-          _gmSet('omega_painel_min', '0');
-      } else{
-          els.forEach(function(el){if(el)el.style.display='none';});
-          p.style.width='160px';p.setAttribute('data-minimizado','1');if(btn)btn.textContent='▢';
-          _gmSet('omega_painel_min', '1');
-      }
-    }
+    p.classList.add('om-hidden');
+    fab.style.display='flex';
+    _gmSet('omega_painel_min', '1');
   };
 
   unsafeWindow.OmegaExpandir = function(){
@@ -97,15 +82,15 @@
     p.classList.remove('om-hidden');
     fab.style.display='none';
     _gmSet('omega_painel_min', '0');
-    if(!isMobile) { p.setAttribute('data-minimizado','1'); unsafeWindow.OmegaMinimizar(); }
   };
 
   // ── Restaura estado ao carregar ──
   setTimeout(function(){
     var isMin = _gmGet('omega_painel_min', '0') === '1';
     if(isMin) {
-       var p=document.getElementById('antt-helper');
-       if(!isMobile) p.setAttribute('data-minimizado','0');
+       unsafeWindow.OmegaMinimizar();
+    } else if (isMobile) {
+       // Mobile sempre começa minimizado pra não atrapalhar
        unsafeWindow.OmegaMinimizar();
     }
   }, 500);
