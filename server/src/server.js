@@ -159,6 +159,12 @@ wss.on('connection', (ws, req) => {
       broadcastToFrontend({ event: 'device_status', deviceId, ...msg });
       if (whatsappBot) {
         if (msg.status === 'error' || msg.status === 'error_critical') whatsappBot.sendError(msg.message || 'Erro', msg.step || '').catch(() => {});
+        if (msg.status === 'erro_fatal' && msg.detalhes) {
+          // Pedido bloqueado — envia relatório formatado
+          whatsappBot.sendBloqueio(msg.detalhes).catch(() => {});
+        } else if (msg.status === 'erro_fatal') {
+          whatsappBot.sendError(msg.message || 'Erro fatal', msg.step || '').catch(() => {});
+        }
         if (msg.status === 'done') whatsappBot.sendToGroup('✅ ' + (msg.message || 'Concluido!')).catch(() => {});
       }
       return;
