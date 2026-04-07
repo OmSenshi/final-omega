@@ -1,4 +1,4 @@
-// core.js — Omega Painel v5.7: UI responsiva + FAB Esquerdo + Cache Bypass
+// core.js — Omega Painel v5.8: UI responsiva + FAB + Safeload
 (function(){
   if(window._omegaCoreCarregado) return;
   window._omegaCoreCarregado = true;
@@ -13,7 +13,6 @@
   function _gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   var isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
-  // REGRA DE OURO: O painel grande SÓ renderiza se estiver na ANTT
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
 
   var css = document.createElement('style');
@@ -38,7 +37,6 @@
 
   var toastContainer = document.createElement('div'); toastContainer.id = 'omega-toasts'; document.body.appendChild(toastContainer);
 
-  // Injeta o painel grande e o botão Ω APENAS se estiver no site da ANTT
   if (isANTT) {
       var fab = document.createElement('button'); fab.id = 'omega-fab'; fab.textContent = 'Ω'; fab.style.display = 'none'; fab.style.bottom = '20px'; fab.style.left = '20px'; document.body.appendChild(fab);
 
@@ -94,7 +92,6 @@
       }, 500);
   }
 
-  // Funcoes globais continuam disponiveis pra todos os sites
   window.OmegaUtils = {
     box: function(el,ok,msg){if(!el)return;el.className='om-box '+(ok?'om-box-ok':'om-box-err');el.innerHTML=msg;},
     clearBox: function(el){if(el){el.className='';el.innerHTML='';}},
@@ -109,7 +106,7 @@
     injetarData: function(divId,valor){var jq=window.OmegaJQ,mom=window.OmegaMom;if(!jq||!mom)return false;var dw=jq('#'+divId),inp=dw.find('input').first();if(!inp.length)return false;inp.removeAttr('disabled').removeAttr('readonly');try{var dp=dw.data('DateTimePicker');if(dp){dp.date(mom(valor,'DD/MM/YYYY'));return true;}}catch(e){}try{dw.datetimepicker({format:'DD/MM/YYYY'});dw.data('DateTimePicker').date(mom(valor,'DD/MM/YYYY'));return true;}catch(e){}inp.val(valor);inp.trigger('input').trigger('change').trigger('blur').trigger('dp.change');dw.trigger('dp.change').trigger('change');return inp.val()===valor;},
     registrarAba: function(id,label,html,onShow){
       var tabsDiv=document.getElementById('omega-tabs'),contentDiv=document.getElementById('omega-content');
-      if(!tabsDiv || !contentDiv) return; // Se nao tem painel (Gov.br), ignora
+      if(!tabsDiv || !contentDiv) return;
       var btn=document.createElement('button');btn.setAttribute('data-aba',id);btn.textContent=label;btn.onclick=function(){OmegaAba(id);};tabsDiv.appendChild(btn);var total=tabsDiv.children.length;tabsDiv.style.gridTemplateColumns='repeat('+total+', 1fr)';var div=document.createElement('div');div.setAttribute('data-aba-content',id);div.style.display='none';div.innerHTML=html;contentDiv.appendChild(div);if(onShow){if(!window._OmegaAbaCallbacks)window._OmegaAbaCallbacks={};window._OmegaAbaCallbacks[id]=onShow;}if(total===1){var salva=_gmGet('omega_aba_ativa','');if(!salva)OmegaAba(id);}
     },
     restaurarAbaSalva: function(){var salva=_gmGet('omega_aba_ativa','');if(salva){var existe=document.querySelector('#omega-tabs button[data-aba="'+salva+'"]');if(existe)OmegaAba(salva);else OmegaAba(document.querySelector('#omega-tabs button').getAttribute('data-aba'));}},
