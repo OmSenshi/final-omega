@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v5.6 (Sunshine Edition)
-// HTTP Polling nativo, Hack da Senha Vue.js, Roteamento e Eixos
+// bridge.js — Final Omega v5.8 (Sunshine Edition)
+// HTTP Polling nativo, Hack da Senha Vue.js, Safeload Gov.br, Roteamento e Eixos
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -193,6 +193,7 @@
       if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
       
       if(govPollInterval) clearInterval(govPollInterval);
+      
       var baseWs = VPS_URL.toLowerCase().trim();
       var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
 
@@ -224,6 +225,7 @@
               }
           });
       }
+
       fazerPoll();
       govPollInterval = setInterval(fazerPoll, 3000);
     }
@@ -242,9 +244,20 @@
       if(!isGovBr)_enviarStatusOriginal(status,message,extra);
     };
 
-    document.body.appendChild(govPanel);
-    if(temConfig){ renderGovStatus('Conectando...','info'); setTimeout(function(){conectarGov();},2000); }
-    else { renderGovForm(); }
+    // ── O TRUQUE DE MESTRE: ESPERAR O VUE.JS CARREGAR ──
+    waitForElement('form, #accountId, .login-content', 15000).then(function() {
+        document.body.appendChild(govPanel);
+        if(temConfig){ 
+            renderGovStatus('Conectando...','info'); 
+            setTimeout(function(){conectarGov();}, 1500); 
+        } else { 
+            renderGovForm(); 
+        }
+    }).catch(function() {
+        // Fallback caso demore demais
+        document.body.appendChild(govPanel);
+        if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); }
+    });
 
     var _logOriginal=log;
     log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
