@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.7 (Sunshine Edition)
-// Integracao Local Painel, Tab Navigator, WaitBlockUI, Eixos Fallback
+// bridge.js — Final Omega v7.8 (Sunshine Edition)
+// Modal Breath, CharByChar Contacts/Gestor/RT, Anti-Wipe
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -9,7 +9,7 @@
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE E ESPERAS (Anti-Atropelamento)
+  // RADAR DE VISIBILIDADE E ESPERAS
   // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -87,7 +87,6 @@
     });
   }
 
-  // ── NAVEGAÇÃO DE ABAS ──
   async function abrirAba(seletorAba, seletorPainel) {
       var aba = document.querySelector(seletorAba);
       if (aba) {
@@ -153,8 +152,6 @@
       atualizarUI();renderLogs();
     });
 
-    document.querySelectorAll('#antt-helper input').forEach(function(inp){ inp.addEventListener('focus',function(){this.scrollIntoView({behavior:'smooth',block:'center'});}); });
-
     document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
     document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
@@ -163,130 +160,50 @@
   // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
-    govCss.textContent=''
-      +'#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}'
-      +'#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}'
-      +'#omega-gov-panel .og-row{margin-bottom:6px}'
-      +'#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}'
-      +'#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}'
-      +'#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}'
-      +'.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}'
-      +'.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}'
-      +'.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}'
-      +'.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}'
-      +'#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}'
-      +'.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}'
-      +'.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}'
-      +'.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
+    govCss.textContent='#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}#omega-gov-panel .og-row{margin-bottom:6px}#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
     document.head.appendChild(govCss);
-
     var govPanel=document.createElement('div'); govPanel.id='omega-gov-panel'; var temConfig=!!VPS_URL;
 
     function renderGovForm(){
-      govPanel.innerHTML=''
-        +'<div class="og-title"><span>OMEGA — Bridge</span></div>'
-        +'<div class="og-row"><input id="og-url" placeholder="https://omhk.com.br" value="'+(VPS_URL||'')+'"></div>'
-        +'<div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div>'
-        +'<div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div>'
-        +'<div id="og-conn-status" class="og-status" style="display:none"></div>';
-      
+      govPanel.innerHTML='<div class="og-title"><span>OMEGA — Bridge</span></div><div class="og-row"><input id="og-url" placeholder="https://omhk.com.br" value="'+(VPS_URL||'')+'"></div><div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div><div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div><div id="og-conn-status" class="og-status" style="display:none"></div>';
       var saveBtn=govPanel.querySelector('#og-save');
-      if(saveBtn){
-        saveBtn.addEventListener('click',function(){
-          var url=(govPanel.querySelector('#og-url')||{}).value||'';
-          var token=(govPanel.querySelector('#og-token')||{}).value||'';
-          var name=(govPanel.querySelector('#og-name')||{}).value||'Dispositivo';
-          url=url.trim();token=token.trim();name=name.trim()||'Dispositivo';
-          if(!url){atualizarGovStatus('URL vazia','err');return;}
-          VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name;
-          gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name);
-          paused=false;errorCount=0;resetBackoff();
-          renderGovStatus('Conectando (Polling)...','info');
-          conectarGov();
-        });
-      }
+      if(saveBtn){ saveBtn.addEventListener('click',function(){ var url=(govPanel.querySelector('#og-url')||{}).value||''; var token=(govPanel.querySelector('#og-token')||{}).value||''; var name=(govPanel.querySelector('#og-name')||{}).value||'Dispositivo'; url=url.trim();token=token.trim();name=name.trim()||'Dispositivo'; if(!url){atualizarGovStatus('URL vazia','err');return;} VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name; gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name); paused=false;errorCount=0;resetBackoff(); renderGovStatus('Conectando (Polling)...','info'); conectarGov(); }); }
       var hideBtn=govPanel.querySelector('#og-hide'); if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
     }
 
     function renderGovStatus(statusText, tipo){
-      govPanel.innerHTML=''
-        +'<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div>'
-        +'<div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div>'
-        +'<div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
-      
+      govPanel.innerHTML='<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div><div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div><div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
       var resetBtn=govPanel.querySelector('#og-reset');
-      if(resetBtn){
-        resetBtn.addEventListener('click',function(){
-          paused=true;
-          if(govPollInterval){clearInterval(govPollInterval);govPollInterval=null;}
-          connected=false;
-          gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name','');
-          VPS_URL='';VPS_TOKEN='';DEVICE_NAME='';
-          renderGovForm();
-        });
-      }
+      if(resetBtn){ resetBtn.addEventListener('click',function(){ paused=true; if(govPollInterval){clearInterval(govPollInterval);govPollInterval=null;} connected=false; gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name',''); VPS_URL='';VPS_TOKEN='';DEVICE_NAME=''; renderGovForm(); }); }
     }
 
-    function atualizarGovStatus(texto,tipo){
-      var el=govPanel.querySelector('#og-conn-status');
-      if(!el)return; el.style.display='block'; el.className='og-status og-status-'+(tipo||'info'); el.textContent=texto;
-    }
+    function atualizarGovStatus(texto,tipo){ var el=govPanel.querySelector('#og-conn-status'); if(!el)return; el.style.display='block'; el.className='og-status og-status-'+(tipo||'info'); el.textContent=texto; }
 
     function conectarGov(){
       if(paused||!VPS_URL)return;
       if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
       if(govPollInterval) clearInterval(govPollInterval);
-      
-      var baseWs = VPS_URL.toLowerCase().trim();
-      var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
-
+      var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
       function fazerPoll() {
           if(paused||!VPS_URL)return;
-          GM_xmlhttpRequest({
-              method: "POST", url: apiUrl,
-              headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN },
-              data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
-              onload: function(res) {
-                  if(res.status===200){
-                      if(!connected){ connected=true; atualizarGovStatus('Conectado ✓ — HTTP Polling','ok'); }
-                      try{
-                          var data=JSON.parse(res.responseText);
-                          if(data.type==='task') receberTarefa(data.task);
-                          if(data.type==='stop') pararTarefa();
-                      }catch(e){}
-                  } else { connected=false; atualizarGovStatus('Erro Polling (Status '+res.status+')','err'); }
-              },
+          GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
+              onload: function(res) { if(res.status===200){ if(!connected){ connected=true; atualizarGovStatus('Conectado ✓ — HTTP Polling','ok'); } try{ var data=JSON.parse(res.responseText); if(data.type==='task') receberTarefa(data.task); if(data.type==='stop') pararTarefa(); }catch(e){} } else { connected=false; atualizarGovStatus('Erro Polling (Status '+res.status+')','err'); } },
               onerror: function() { connected=false; atualizarGovStatus('Erro de Conexao','err'); }
           });
       }
-      fazerPoll();
-      govPollInterval = setInterval(fazerPoll, 3000);
+      fazerPoll(); govPollInterval = setInterval(fazerPoll, 3000);
     }
 
     var _enviarStatusOriginal=enviarStatus;
     enviarStatus=function(status,message,extra){
-      if(isGovBr && VPS_URL){
-        var baseWs = VPS_URL.toLowerCase().trim();
-        var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
-        var payload = { deviceId: DEVICE_ID, status: status, message: message||'' };
-        if(extra) Object.assign(payload, extra);
-        GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify(payload) });
-      }
-      if(status==='error'||status==='error_critical')registrarErro(message||'Erro'); else errorCount=0;
-      log(message||status,(status==='error'||status==='error_critical')?'err':'ok');
+      if(isGovBr && VPS_URL){ var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll'; var payload = { deviceId: DEVICE_ID, status: status, message: message||'' }; if(extra) Object.assign(payload, extra); GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify(payload) }); }
+      if(status==='error'||status==='error_critical')registrarErro(message||'Erro'); else errorCount=0; log(message||status,(status==='error'||status==='error_critical')?'err':'ok');
       if(!isGovBr)_enviarStatusOriginal(status,message,extra);
     };
 
-    waitForElement('form, #accountId, .login-content', 15000).then(function() {
-        document.body.appendChild(govPanel);
-        if(temConfig){ renderGovStatus('Conectando...','info'); setTimeout(function(){conectarGov();}, 1500); } else { renderGovForm(); }
-    }).catch(function() {
-        document.body.appendChild(govPanel);
-        if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); }
-    });
+    waitForElement('form, #accountId, .login-content', 15000).then(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); setTimeout(function(){conectarGov();}, 1500); } else { renderGovForm(); } }).catch(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); } });
 
-    var _logOriginal=log;
-    log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
+    var _logOriginal=log; log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
   }
 
   function pausarConexao(m){paused=true;if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();log(m||'Pausado','warn');if(U){U.box(document.getElementById('omega-bridge-status'),false,'⏸ '+(m||'Pausado'));U.toast('Bridge pausado',false);}}
@@ -294,9 +211,7 @@
 
   function conectar(){
     if(paused||!VPS_URL)return;if(ws){try{ws.close();}catch(e){}ws=null;}log('Conectando...','ok');
-    var wsUrl = VPS_URL.toLowerCase().trim();
-    if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws');
-    if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
+    var wsUrl = VPS_URL.toLowerCase().trim(); if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws'); if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
     var url=wsUrl+(VPS_TOKEN?((wsUrl.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
     try{ws=new WebSocket(url);}catch(e){log('URL invalida','err');return;}
     ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');U.toast('Bridge conectado',true);}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
@@ -324,11 +239,7 @@
   }
 
   // PORTA DE ENTRADA PARA O PAINEL MANUAL
-  if (typeof unsafeWindow !== 'undefined') {
-      unsafeWindow.OmegaStartLocalTask = receberTarefa;
-  } else {
-      window.OmegaStartLocalTask = receberTarefa;
-  }
+  if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
   // MÁQUINA DE ESTADOS GOV.BR
@@ -377,8 +288,6 @@
         if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
             log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
             enviarStatus('error','Captcha detectado. Resolva manualmente.');
-        } else {
-            log('Nenhum campo alvo encontrado.','warn');
         }
     }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
   }
@@ -420,7 +329,9 @@
           }
       }
 
-      if (url.endsWith('.gov.br/') || url.indexOf('Home') !== -1) {
+      var isHome = url.endsWith('.gov.br/') || url.indexOf('Home') !== -1 || (url.indexOf('Transportador/Cadastro') === -1 && url.indexOf('Pedido/Criar') === -1 && url.indexOf('NovoCadastro') === -1 && url.indexOf('Identidade') === -1 && !document.getElementById('Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && url.indexOf('/Pedido/') === -1 && url.indexOf('GerenciarFrota') === -1 && url.indexOf('GerenciamentoFrota') === -1 && url.indexOf('Movimentacao') === -1 && url.indexOf('ContratoArrendamento/Criar') === -1);
+
+      if (isHome) {
           enviarStatus('running', 'Navegando para o destino...');
           salvarEstado('tarefa_pendente_navegacao', task);
           if (task.modo.indexOf('cad') !== -1) { window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/Cadastro'; return; }
@@ -537,7 +448,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (Cadastros)
+  // PREENCHIMENTO DE DADOS (A RESPIRAÇÃO DOS MODAIS)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
@@ -546,9 +457,11 @@
     await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
     
     var btn = getVisible('[data-action*="Endereco/Novo"], [data-action*="EnderecoPedido"]');
-    if(btn){ btn.click(); await delay(2000); }
+    if(btn){ btn.click(); }
 
-    try { await waitForVisible('#Cep, input[name*="Cep"]', 10000); } catch(e) { log('Modal de Endereco falhou','err'); return; }
+    var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
+    // RESPIRAÇÃO DO MODAL: Aguarda o framework resetar o form
+    await delay(1500); 
     
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
@@ -558,8 +471,17 @@
     }
     await delay(500);
 
-    var cf = getVisible('#Cep, input[name*="Cep"]');
-    if(cf){ await typeSlowly(cf, cep, 60); await delay(2000); }
+    if(cf){ 
+        cf.removeAttribute('disabled');
+        cf.focus();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cep, { delay:60, onDone: resolve });
+            else typeSlowly(cf, cep, 60).then(resolve);
+        });
+        cf.dispatchEvent(new Event('blur',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
+        await delay(2500); // Aguarda o ViaCEP do Governo
+    }
 
     var f = getVisible('#Logradouro'); if(f){ f.value=d.logradouro||'0'; f.dispatchEvent(new Event('change',{bubbles:true})); }
     var nf = getVisible('#Numero'); if(nf){ nf.value=d.numero||'0'; nf.dispatchEvent(new Event('change',{bubbles:true})); }
@@ -568,7 +490,11 @@
     var bf = getVisible('#Bairro'); if(bf){ bf.value=d.bairro||'0'; bf.dispatchEvent(new Event('change',{bubbles:true})); }
     
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
-    if(me){ me.checked=true; me.dispatchEvent(new Event('change',{bubbles:true})); }
+    if(me){ 
+        me.checked = true; 
+        me.dispatchEvent(new Event('change',{bubbles:true})); 
+        var jq = unsafeWindow.jQuery; if(jq) { jq(me).trigger('change'); jq(me).iCheck('check'); }
+    }
     await delay(500);
 
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
@@ -580,9 +506,11 @@
 
     var btn = getVisible('[data-action*="ContatoPedido/Novo"]');
     if(!btn) return false;
-    btn.click(); await delay(2000);
+    btn.click(); 
 
-    try{ await waitForVisible('#CodigoTipoContato', 5000); } catch(e){ log('Modal de Contato falhou','err'); return false; }
+    var cf = await waitForVisible('#Contato', 5000);
+    // RESPIRAÇÃO DO MODAL
+    await delay(1500);
     
     var selTipo = getVisible('#CodigoTipoContato');
     if(selTipo) {
@@ -592,8 +520,16 @@
     }
     await delay(500);
 
-    var cf = getVisible('#Contato');
-    if(cf) await typeSlowly(cf, valor, 40);
+    if(cf) {
+        cf.removeAttribute('disabled');
+        cf.focus();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, valor, { delay:60, onDone: resolve });
+            else typeSlowly(cf, valor, 60).then(resolve);
+        });
+        cf.dispatchEvent(new Event('blur',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
+    }
     await delay(500);
 
     var bs = getVisible('.modal .btn-salvar-contato, .modal .btn-primary');
@@ -614,11 +550,12 @@
 
     var btn = getVisible('[data-action*="Gestor/Criar"], [data-action*="GestorPedido/Novo"]');
     if(!btn) return;
-    btn.click(); await delay(2000);
+    btn.click(); 
 
-    try{ await waitForVisible('.modal.show select, .modal.in select', 10000); } catch(e){ log('Modal de Gestor falhou','err'); return; }
+    var sel = await waitForVisible('.modal.show select, .modal.in select', 10000);
+    // RESPIRAÇÃO DO MODAL
+    await delay(1500);
 
-    var sel = getVisible('.modal.show select, .modal.in select');
     if(sel) {
         for(var i=0; i<sel.options.length; i++){
             if(sel.options[i].text.toLowerCase().indexOf('socio')!==-1 || sel.options[i].text.toLowerCase().indexOf('sócio')!==-1){
@@ -633,11 +570,16 @@
 
     var cf = getVisible('.modal #Cpf, .modal input[name="Cpf"], .modal input[name="CpfCnpj"]');
     if(cf){
-        await typeSlowly(cf, cpf, 50);
+        cf.removeAttribute('disabled');
+        cf.focus();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cpf, { delay:70, onDone: resolve });
+            else typeSlowly(cf, cpf, 70).then(resolve);
+        });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
-    await delay(2000);
+    await delay(3000); // Aguarda a busca de nome no AJAX
 
     for(var i=0; i<30; i++){
         var nf = getVisible('.modal #Nome, .modal input[name="Nome"]');
@@ -660,16 +602,23 @@
 
     var btn = getVisible('[data-action*="ResponsavelTecnico/Criar"]');
     if(!btn) return;
-    btn.click(); await delay(2000);
+    btn.click();
 
-    try{ await waitForVisible('.modal #Cpf', 10000); } catch(e){ log('Modal de RT falhou','err'); return; }
+    var cf = await waitForVisible('.modal #Cpf', 10000);
+    // RESPIRAÇÃO DO MODAL
+    await delay(1500);
 
-    var cf = getVisible('.modal #Cpf');
     if(cf){
-        await typeSlowly(cf, cpfRT, 50);
+        cf.removeAttribute('disabled');
+        cf.focus();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cpfRT, { delay:70, onDone: resolve });
+            else typeSlowly(cf, cpfRT, 70).then(resolve);
+        });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
-    await delay(2000);
+    await delay(3000); // Aguarda a busca de nome no AJAX
 
     for(var i=0; i<30; i++){
         var nf = getVisible('.modal #Nome');
@@ -701,6 +650,10 @@
 
       enviarStatus('done','Cadastro concluido!');
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // VEÍCULOS E ARRENDAMENTO
+  // ══════════════════════════════════════════════════════════════
 
   async function processarInclusaoVeiculo(placa,renavam){
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
@@ -858,7 +811,6 @@
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
     var jq = unsafeWindow.jQuery || unsafeWindow.$;
     
-    // O PULo DO GATO DA RE-SELEÇÃO
     var cpfArrendanteOriginal = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,'');
     var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
     var sel = await waitForVisible('#CPFCNPJArrendanteTransportador', 10000);
@@ -873,7 +825,6 @@
                 selecionou = true; break;
             }
         }
-        // Se for terceiro (não está na lista), escolhe um bucha de canhão
         if(!selecionou){
             for(var i=0; i<sel.options.length; i++){
                 if(sel.options[i].text && sel.options[i].text.toLowerCase().indexOf('selecione') === -1){
@@ -886,7 +837,6 @@
     }
     await delay(1500); 
 
-    // SUBSTITUICAO MAGICA DO HTML ANTES DE DIGITAR A PLACA
     if (cpfArrendanteOriginal || nomeArrendante) {
         enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
         var ap = null;
@@ -909,7 +859,6 @@
         });
 
         await delay(500);
-        // RE-SELEÇÃO FORÇADA APÓS A TROCA DO HTML
         var selRefresh = document.getElementById('CPFCNPJArrendanteTransportador');
         if (selRefresh) {
             for(var i=0; i<selRefresh.options.length; i++){
@@ -997,7 +946,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // O GUARDA DE TRÂNSITO (Verificação Inteligente de Memória)
+  // O GUARDA DE TRÂNSITO
   // ══════════════════════════════════════════════════════════════
   function verificarEstadoPendente(){
     var estado = lerEstado(); if(!estado) return;
