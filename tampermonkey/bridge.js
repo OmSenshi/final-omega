@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.0 (Sunshine Edition)
-// Anti-Atropelamento (waitForVisible), Memory Persistence, DOM Radar
+// bridge.js — Final Omega v7.1 (Sunshine Edition)
+// Anti-Atropelamento (waitForVisible), DigitarCharAChar Nativo, Arrendamento Fallback
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -9,13 +9,11 @@
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE (O Fim do Atropelamento)
+  // RADAR DE VISIBILIDADE E ESPERAS (Anti-Atropelamento)
   // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
-      for(var i=0; i<els.length; i++) {
-          if (els[i].offsetParent !== null) return els[i];
-      }
+      for(var i=0; i<els.length; i++) { if (els[i].offsetParent !== null) return els[i]; }
       return null;
   }
 
@@ -66,8 +64,7 @@
   function typeSlowly(el, text, ms) {
     ms = ms || 80;
     return new Promise(function(resolve) {
-      el.value = ''; el.focus();
-      var i = 0;
+      el.value = ''; el.focus(); var i = 0;
       function next() {
         if (i >= text.length) { el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); return resolve(); }
         el.value = text.substring(0, i + 1); el.dispatchEvent(new Event('input',{bubbles:true}));
@@ -358,7 +355,6 @@
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
 
-      // PASSO 1: TELA DE ESCOLHA (Criar Pedido)
       if (url.indexOf('Transportador/Cadastro') !== -1 || url.indexOf('Pedido/Criar') !== -1 || url.indexOf('NovoCadastro') !== -1) {
           if (!document.getElementById('Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
               await iniciarPedidoCadastro(task);
@@ -366,7 +362,6 @@
           }
       }
       
-      // PASSO 2: PREENCHIMENTO DO FORMULÁRIO (Cuidado com DOM invisível)
       var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
       if (isFormulario) {
           if (task.modo === 'cadcpf' || (task.modo === 'cadastro' && task.tipo !== 'cnpj')) { await fluxoCadastroCPF(task); }
@@ -374,7 +369,6 @@
           return;
       }
 
-      // PASSO 3: GERENCIAMENTO DE FROTA
       if (url.indexOf('GerenciarFrota') !== -1 || url.indexOf('GerenciamentoFrota') !== -1 || url.indexOf('Movimentacao') !== -1) {
           if (task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') {
               await fluxoInclusao(task);
@@ -382,7 +376,6 @@
           }
       }
 
-      // PASSO 4: ARRENDAMENTO
       if (url.indexOf('ContratoArrendamento/Criar') !== -1) {
           if (task.modo === 'arrendamento' || task.modo === 'arrendamento_avulso' || task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'inclusao') {
               await fluxoArrendamento(task);
@@ -390,7 +383,6 @@
           }
       }
 
-      // PASSO ZERO: NAVEGAÇÃO INICIAL
       if (url.endsWith('.gov.br/') || url.indexOf('Home') !== -1) {
           enviarStatus('running', 'Navegando para o destino...');
           salvarEstado('tarefa_pendente_navegacao', task);
@@ -408,7 +400,7 @@
   function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE RESGATE (Anti-404)
+  // MÁQUINA DE RESGATE (Anti-404 undefined)
   // ══════════════════════════════════════════════════════════════
   async function executarResgateNaPagina(cpfCnpj, task) {
     try {
@@ -449,7 +441,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // INICIAR PEDIDO (Com proteção de Memória antes do Clique)
+  // INICIAR PEDIDO (O "Leitor Inteligente de Toasts")
   // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
@@ -477,7 +469,6 @@
           }
           
           if(btnCriar) {
-              // SALVAMENTO VITAL: O clique abaixo recarrega a página. Precisamos salvar o estado AGORA.
               salvarEstado('tarefa_pendente_navegacao', task);
               btnCriar.click();
               
@@ -489,7 +480,7 @@
                   
                   if(msgLower.indexOf('pedido') !== -1 || msgLower.indexOf('cadastramento') !== -1){
                       log('Pedido bloqueado. Iniciando Resgate...','warn');
-                      limparEstado(); // Limpa o estado pendente_navegacao
+                      limparEstado();
                       salvarEstado('resgate_pedido', { cpfCnpj: doc, task: task });
                       window.location.href = 'https://rntrcdigital.antt.gov.br/AcompanharPedidos';
                       return;
@@ -512,14 +503,14 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (Anti-Modais Fantasmas)
+  // PREENCHIMENTO DE DADOS (Cadastros)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
     var cep=(d.cep||'').replace(/\D/g,''); if(!cep){var ceps={MG:['32220390','32017900'],SP:['04805140','01002900'],RJ:['23032486','20211110']};var est=['MG','SP','RJ'][Math.floor(Math.random()*3)];var l=ceps[est]||ceps.MG;cep=l[Math.floor(Math.random()*l.length)];}
     
     var btn = getVisible('[data-action*="Endereco/Novo"], [data-action*="EnderecoPedido"]');
-    if(btn){ btn.click(); await delay(2000); } // Aumentado o tempo de abrir modal
+    if(btn){ btn.click(); await delay(2000); }
 
     try { await waitForVisible('#Cep, input[name*="Cep"]', 10000); } catch(e) { return; }
     
@@ -669,7 +660,6 @@
   async function fluxoCadastroCNPJ(task){
     enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
     
-    // Checkbox nativo com iCheck
     var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
     if(cap){
         var jq = unsafeWindow.jQuery; 
@@ -690,22 +680,27 @@
     await preencherRT(); await processarVeiculos(task);
   }
 
-  // .. (As funções processarVeiculos e fluxoArrendamento continuam exatamente com a lógica visual de substituição que estava no 6.8) ..
+  // ══════════════════════════════════════════════════════════════
+  // VEÍCULOS E ARRENDAMENTO (DelayEspecial e Fallback no Dropdown)
+  // ══════════════════════════════════════════════════════════════
   async function processarInclusaoVeiculo(placa,renavam){
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
     var btnN = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
     if(!btnN)throw new Error('Botao veiculo nao encontrado');
-    btnN.click();await waitForVisible('#Placa',10000);await delay(500);
-    var cp = getVisible('#Placa'); cp.removeAttribute('disabled');
+    btnN.click();
     
-    cp.value=''; cp.focus();
+    var cp = await waitForVisible('#Placa', 10000); 
+    cp.removeAttribute('disabled');
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
-    for(var k=0; k<pLimpa.length; k++){
-        cp.value = pLimpa.substring(0, k+1);
-        cp.dispatchEvent(new Event('input', {bubbles: true}));
-        await delay(k===3 ? 150 : 80);
-    }
-    await delay(200);
+    
+    // Proteção contra a Máscara da ANTT que apaga o texto rápido
+    await new Promise(function(resolve){
+        if(U && U.digitarCharAChar) {
+            U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
+        } else {
+            typeSlowly(cp, pLimpa, 80).then(resolve);
+        }
+    });
 
     var cr=getVisible('#Renavam');cr.removeAttribute('disabled');cr.value=renavam;
     cr.dispatchEvent(new Event('input',{bubbles:true})); cr.dispatchEvent(new Event('change',{bubbles:true})); cr.dispatchEvent(new Event('blur',{bubbles:true})); await delay(500);
@@ -794,6 +789,7 @@
                 enviarStatus('erro_fatal', 'Falha ao acessar frota: ' + resultado.texto); limparEstado(); return;
             }
         }
+        setTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
     if (formAberto) { await processarVeiculos(task); }
@@ -801,15 +797,103 @@
 
   async function fluxoArrendamento(task){
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
-    await delay(2000); 
-    var cpfArr=(arr.cpf_arrendante||arr.cpf_cnpj_proprietario||'').replace(/\D/g,''); var jq=unsafeWindow.jQuery||unsafeWindow.$;
-    if(cpfArr){var sel=document.getElementById('CPFCNPJArrendanteTransportador');if(sel&&jq){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value.replace(/\D/g,'')===cpfArr||sel.options[i].text.replace(/\D/g,'')===cpfArr){jq(sel).val(sel.options[i].value).trigger('change');break;}}}}
-    var cp=await waitForVisible('#Placa',5000);cp.removeAttribute('disabled');await typeSlowly(cp,(arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase(),80);await delay(200);
-    var cr=document.getElementById('Renavam');if(cr){cr.removeAttribute('disabled');cr.value=arr.renavam||'';cr.dispatchEvent(new Event('change',{bubbles:true}));}await delay(500);
-    if(jq)jq.ajax({type:'GET',url:'/ContratoArrendamento/verificarVeiculo',cache:false,data:{placa:cp.value.toUpperCase(),renavam:(cr?cr.value:''),cpfCnpjProprietario:document.getElementById('CPFCNPJArrendante').value}});
+    var jq = unsafeWindow.jQuery || unsafeWindow.$;
+    var cpfArr = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,''); 
+    
+    // 1. ESPERA E SELECIONA DROPDOWN (Com Fallback)
+    var sel = await waitForVisible('#CPFCNPJArrendanteTransportador', 10000);
+    if (sel) {
+        // Aguarda carregar opções via Ajax
+        for(var w=0; w<30; w++){ if(sel.options.length>1) break; await delay(500); }
+        
+        var selecionou = false;
+        for(var i=0; i<sel.options.length; i++){
+            if(sel.options[i].value.replace(/\D/g,'')===cpfArr || sel.options[i].text.replace(/\D/g,'')===cpfArr){
+                if(jq) jq(sel).val(sel.options[i].value).trigger('change');
+                else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
+                selecionou = true; break;
+            }
+        }
+        
+        // O PULo DO GATO: Se for CPF terceiro, escolhe o primeiro valido pra podermos substituir o HTML visualmente!
+        if(!selecionou){
+            for(var i=0; i<sel.options.length; i++){
+                if(sel.options[i].text && sel.options[i].text.toLowerCase().indexOf('selecione') === -1){
+                    if(jq) jq(sel).val(sel.options[i].value).trigger('change');
+                    else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
+                    selecionou = true; break;
+                }
+            }
+        }
+    }
+    await delay(1500); // Dá tempo para a UI atualizar
+
+    // 2. SUBSTITUICAO MAGICA DO HTML
+    var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
+    if (cpfArr || nomeArrendante) {
+        enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
+        var ap = null;
+        var nt = document.getElementById('NomesTransportador');
+        if(nt && nt.value) { try { var jArr=JSON.parse(nt.value); if(jArr&&jArr[0]&&jArr[0].CpfCnpj) ap=jArr[0].CpfCnpj.replace(/\D/g,''); } catch(e){} }
+        if(!ap && U) ap = U.getDoc();
+
+        if(cpfArr && ap && U){
+            U.substituirTudo(U.fAuto(ap), U.fAuto(cpfArr));
+            U.substituirTudo(ap, cpfArr);
+        }
+        if(nomeArrendante && U){
+            var an = U.getNome();
+            if(an) U.substituirTudo(an, nomeArrendante);
+            var cv = document.getElementById('NomeArrendanteInput');
+            if(cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); }
+        }
+        var novoJson = JSON.stringify([{"CpfCnpj":cpfArr, "Nome":nomeArrendante}]);
+        if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
+        ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){
+            var el = document.getElementById(id);
+            if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
+        });
+    }
+    await delay(1000);
+
+    // 3. DIGITACAO DE PLACA (Anti-Máscara)
+    var cp = await waitForVisible('#Placa', 5000);
+    if(cp){
+        cp.removeAttribute('disabled');
+        var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
+            else typeSlowly(cp, pLimpa, 80).then(resolve);
+        });
+    }
+    
+    // 4. DIGITACAO DE RENAVAM
+    var cr = document.getElementById('Renavam');
+    if(cr){
+        cr.removeAttribute('disabled'); cr.value = arr.renavam||'';
+        cr.dispatchEvent(new Event('input',{bubbles:true}));
+        cr.dispatchEvent(new Event('change',{bubbles:true}));
+        cr.dispatchEvent(new Event('blur',{bubbles:true}));
+    }
+    await delay(500);
+
+    // 5. VERIFICACAO VIA AJAX
+    enviarStatus('running','Verificando...', {step:'arrendamento_verificar'});
+    var bv = document.getElementById('verificar');
+    if(jq) {
+        jq.ajax({
+            type:'GET',url:'/ContratoArrendamento/verificarVeiculo',cache:false,
+            data:{placa:cp.value.toUpperCase(),renavam:cr.value,cpfCnpjProprietario:document.getElementById('CPFCNPJArrendante').value},
+            success: function(){ if(bv) bv.click(); },
+            error: function(){ if(bv) bv.click(); }
+        });
+    } else if(bv){ bv.click(); }
     await delay(3000);
+
+    // 6. DATAS E CAIXINHAS
     var hj=new Date();var di=String(hj.getDate()).padStart(2,'0')+'/'+String(hj.getMonth()+1).padStart(2,'0')+'/'+hj.getFullYear();var fim=new Date(hj);fim.setFullYear(fim.getFullYear()+1);var df=String(fim.getDate()).padStart(2,'0')+'/'+String(fim.getMonth()+1).padStart(2,'0')+'/'+fim.getFullYear();
     if(U){U.injetarData('DataInicio',di);U.injetarData('DataFim',df);}await delay(500);
+    
     var c1=document.getElementById('ExisteContrato'),c2=document.getElementById('InformacoesVerdadeiras');
     if(c1){c1.checked=true;c1.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c1).trigger('change');}
     if(c2){c2.checked=true;c2.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c2).trigger('change');}await delay(500);
@@ -817,29 +901,25 @@
     var targetDoc = getTargetDoc(task);
     var cpfArrendatario = (arr.cpf_arrendatario || targetDoc || '').replace(/\D/g,'');
     if(cpfArrendatario){var af=document.getElementById('CPFCNPJArrendatario')||document.querySelector('input[name*="CpfCnpjArrendatario"]');if(af){af.removeAttribute('disabled');af.value=cpfArrendatario;af.dispatchEvent(new Event('change',{bubbles:true}));af.dispatchEvent(new Event('blur',{bubbles:true}));}}await delay(500);
-    
-    var cpfArrendanteOriginal = (arr.cpf_arrendante || '').replace(/\D/g,'');
-    var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
-    if (cpfArrendanteOriginal || nomeArrendante) {
-        enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
-        var docSistema = U.getDoc();
-        var nomeSistema = U.getNome();
-        if (cpfArrendanteOriginal && docSistema) { U.substituirTudo(U.fAuto(docSistema), U.fAuto(cpfArrendanteOriginal)); U.substituirTudo(docSistema, cpfArrendanteOriginal); }
-        if (nomeArrendante && nomeSistema) { U.substituirTudo(nomeSistema, nomeArrendante); var cv = document.getElementById('NomeArrendanteInput'); if (cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); } }
-        var novoJson = JSON.stringify([{"CpfCnpj":cpfArrendanteOriginal, "Nome":nomeArrendante}]);
-        var nt = document.getElementById('NomesTransportador');
-        if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
-        ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){var el=document.getElementById(id);if(el&&el.getAttribute('cpfcnpjs'))el.setAttribute('cpfcnpjs',novoJson);});
-    }
 
+    // 7. SALVAR
     enviarStatus('running','Salvando...',{step:'arrendamento_salvar'}); var btnS=document.querySelector('#btnSalvar,.btn-salvarContrato');if(btnS)btnS.click();await delay(3000);
+    
     try{
       await waitForURL('ContratoArrendamento/Index',15000);enviarStatus('done','Arrendamento OK!');
+      
       var returnUrl=gmGet('omega_return_url','');
-      if (returnUrl) { gmSet('omega_return_url',''); salvarEstado('tarefa_pendente_navegacao', task); window.location.href = returnUrl; }
+      if (returnUrl) {
+          gmSet('omega_return_url','');
+          salvarEstado('tarefa_pendente_navegacao', task); 
+          window.location.href = returnUrl;
+      }
     }catch(e){enviarStatus('error','Arrendamento falhou.');}
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // O GUARDA DE TRÂNSITO (Verificação Inteligente de Memória)
+  // ══════════════════════════════════════════════════════════════
   function verificarEstadoPendente(){
     var estado = lerEstado(); if(!estado) return;
     log('Memoria detectada: ' + estado.estado, 'warn');
