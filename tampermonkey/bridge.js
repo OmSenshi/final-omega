@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v7.6 (Sunshine Edition)
-// Tab Navigator (abrirAba), Fix Undefined Modo, Anti-Atropelamento
+// bridge.js — Final Omega v7.7 (Sunshine Edition)
+// Integracao Local Painel, Tab Navigator, WaitBlockUI, Eixos Fallback
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -87,7 +87,7 @@
     });
   }
 
-  // ── FUNÇÃO DE NAVEGAÇÃO DE ABAS ──
+  // ── NAVEGAÇÃO DE ABAS ──
   async function abrirAba(seletorAba, seletorPainel) {
       var aba = document.querySelector(seletorAba);
       if (aba) {
@@ -96,7 +96,7 @@
               aba.click();
               log('Abrindo aba: ' + seletorAba, 'ok');
               try { await waitForVisible(seletorPainel, 8000); } catch(e) { log('Aba demorou a responder', 'warn'); }
-              await delay(1000); // Dá tempo das animações do Bootstrap terminarem
+              await delay(1000); 
           }
       }
   }
@@ -106,6 +106,11 @@
   function limparEstado() { gmSet('omega_state', ''); }
 
   function getTargetDoc(task) {
+      if (!task) return '';
+      if (task.modo === 'arrendamento_avulso' || task.modo === 'arrendamento') {
+          var arr = task.arrendamento || task;
+          if (arr.cpf_arrendatario) return String(arr.cpf_arrendatario).replace(/\D/g, '');
+      }
       var d = task.transportador || task;
       if (typeof d === 'string') return d.replace(/\D/g, '');
       var isCnpj = task.modo === 'cadcnpj' || task.tipo === 'cnpj';
@@ -318,6 +323,13 @@
     executarFluxo(msg);
   }
 
+  // PORTA DE ENTRADA PARA O PAINEL MANUAL
+  if (typeof unsafeWindow !== 'undefined') {
+      unsafeWindow.OmegaStartLocalTask = receberTarefa;
+  } else {
+      window.OmegaStartLocalTask = receberTarefa;
+  }
+
   // ══════════════════════════════════════════════════════════════
   // MÁQUINA DE ESTADOS GOV.BR
   // ══════════════════════════════════════════════════════════════
@@ -325,7 +337,6 @@
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
     var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
     await delay(1000); 
-
     try {
         var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
         var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
@@ -412,21 +423,18 @@
       if (url.endsWith('.gov.br/') || url.indexOf('Home') !== -1) {
           enviarStatus('running', 'Navegando para o destino...');
           salvarEstado('tarefa_pendente_navegacao', task);
-          
           if (task.modo.indexOf('cad') !== -1) { window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/Cadastro'; return; }
           if (task.modo.indexOf('inc') !== -1) { window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/GerenciarFrota'; return; }
           if (task.modo.indexOf('arr') !== -1) { window.location.href = 'https://rntrcdigital.antt.gov.br/ContratoArrendamento/Criar'; return; }
       }
-
       enviarStatus('error', 'URL não reconhecida para a tarefa: ' + url);
-
     }catch(e){ enviarStatus('error_critical','Fatal: '+e.message); log('FATAL: '+e.message,'err'); }
   }
 
   function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE RESGATE (Anti-404 undefined)
+  // MÁQUINA DE RESGATE
   // ══════════════════════════════════════════════════════════════
   async function executarResgateNaPagina(cpfCnpj, task) {
     try {
@@ -467,7 +475,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // INICIAR PEDIDO (Com Espera Segura)
+  // INICIAR PEDIDO
   // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
@@ -529,7 +537,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (Cadastros) E VEICULOS
+  // PREENCHIMENTO DE DADOS (Cadastros)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
@@ -772,7 +780,7 @@
         enviarStatus('running','Terceiro: arrendamento '+v.placa,{step:'desvio'}); 
         gmSet('omega_return_url', window.location.href);
         salvarEstado('inclusao_pendente_arrendamento',{
-            modo: 'arrendamento', // FIX DO UNDEFINED
+            modo: 'arrendamento', 
             transportador:task.transportador||task, veiculos:veiculos, currentVehicleIndex:vi, 
             credenciais:task.credenciais, cnpj_data:task.cnpj_data, 
             arrendamento:{placa:v.placa, renavam:v.renavam, cpf_arrendante:v.cpf_arrendante||'', nome_arrendante:v.nome_arrendante||''}
@@ -849,30 +857,71 @@
   async function fluxoArrendamento(task){
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
     var jq = unsafeWindow.jQuery || unsafeWindow.$;
-    var cpfArr = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,''); 
     
+    // O PULo DO GATO DA RE-SELEÇÃO
+    var cpfArrendanteOriginal = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,'');
+    var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
     var sel = await waitForVisible('#CPFCNPJArrendanteTransportador', 10000);
+
     if (sel) {
         for(var w=0; w<30; w++){ if(sel.options.length>1) break; await delay(500); }
         var selecionou = false;
         for(var i=0; i<sel.options.length; i++){
-            if(sel.options[i].value.replace(/\D/g,'')===cpfArr || sel.options[i].text.replace(/\D/g,'')===cpfArr){
+            if(sel.options[i].value.replace(/\D/g,'')===cpfArrendanteOriginal || sel.options[i].text.replace(/\D/g,'')===cpfArrendanteOriginal){
                 if(jq) jq(sel).val(sel.options[i].value).trigger('change');
                 else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
                 selecionou = true; break;
             }
         }
+        // Se for terceiro (não está na lista), escolhe um bucha de canhão
         if(!selecionou){
             for(var i=0; i<sel.options.length; i++){
                 if(sel.options[i].text && sel.options[i].text.toLowerCase().indexOf('selecione') === -1){
                     if(jq) jq(sel).val(sel.options[i].value).trigger('change');
                     else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
-                    selecionou = true; break;
+                    break;
                 }
             }
         }
     }
     await delay(1500); 
+
+    // SUBSTITUICAO MAGICA DO HTML ANTES DE DIGITAR A PLACA
+    if (cpfArrendanteOriginal || nomeArrendante) {
+        enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
+        var ap = null;
+        var nt = document.getElementById('NomesTransportador');
+        if(nt && nt.value) { try { var jArr=JSON.parse(nt.value); if(jArr&&jArr[0]&&jArr[0].CpfCnpj) ap=jArr[0].CpfCnpj.replace(/\D/g,''); } catch(e){} }
+        if(!ap && U) ap = U.getDoc();
+
+        if(cpfArrendanteOriginal && ap && U){ U.substituirTudo(U.fAuto(ap), U.fAuto(cpfArrendanteOriginal)); U.substituirTudo(ap, cpfArrendanteOriginal); }
+        if(nomeArrendante && U){
+            var an = U.getNome();
+            if(an) U.substituirTudo(an, nomeArrendante);
+            var cv = document.getElementById('NomeArrendanteInput') || document.getElementById('NomeArrendante');
+            if(cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); }
+        }
+        var novoJson = JSON.stringify([{"CpfCnpj":cpfArrendanteOriginal, "Nome":nomeArrendante}]);
+        if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
+        ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){
+            var el = document.getElementById(id);
+            if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
+        });
+
+        await delay(500);
+        // RE-SELEÇÃO FORÇADA APÓS A TROCA DO HTML
+        var selRefresh = document.getElementById('CPFCNPJArrendanteTransportador');
+        if (selRefresh) {
+            for(var i=0; i<selRefresh.options.length; i++){
+                if(selRefresh.options[i].value.replace(/\D/g,'') === cpfArrendanteOriginal || selRefresh.options[i].text.replace(/\D/g,'') === cpfArrendanteOriginal){
+                    if(jq) jq(selRefresh).val(selRefresh.options[i].value).trigger('change');
+                    else { selRefresh.value = selRefresh.options[i].value; selRefresh.dispatchEvent(new Event('change',{bubbles:true})); }
+                    break;
+                }
+            }
+        }
+    }
+    await delay(1000);
 
     var cp = await waitForVisible('#Placa', 5000);
     if(cp){
@@ -931,42 +980,6 @@
             af.dispatchEvent(new Event('blur',{bubbles:true}));
             var btnBuscarArrendatario = document.getElementById('btnBuscarArrendatario'); 
             if(btnBuscarArrendatario && getVisible('#btnBuscarArrendatario')) { btnBuscarArrendatario.click(); await delay(1000); }
-        }
-    }
-    await delay(1000);
-
-    var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
-    if (cpfArr || nomeArrendante) {
-        enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
-        var ap = null;
-        var nt = document.getElementById('NomesTransportador');
-        if(nt && nt.value) { try { var jArr=JSON.parse(nt.value); if(jArr&&jArr[0]&&jArr[0].CpfCnpj) ap=jArr[0].CpfCnpj.replace(/\D/g,''); } catch(e){} }
-        if(!ap && U) ap = U.getDoc();
-
-        if(cpfArr && ap && U){ U.substituirTudo(U.fAuto(ap), U.fAuto(cpfArr)); U.substituirTudo(ap, cpfArr); }
-        if(nomeArrendante && U){
-            var an = U.getNome();
-            if(an) U.substituirTudo(an, nomeArrendante);
-            var cv = document.getElementById('NomeArrendanteInput') || document.getElementById('NomeArrendante');
-            if(cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); }
-        }
-        var novoJson = JSON.stringify([{"CpfCnpj":cpfArr, "Nome":nomeArrendante}]);
-        if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
-        ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){
-            var el = document.getElementById(id);
-            if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
-        });
-
-        await delay(500);
-        var selRefresh = document.getElementById('CPFCNPJArrendanteTransportador');
-        if (selRefresh) {
-            for(var i=0; i<selRefresh.options.length; i++){
-                if(selRefresh.options[i].value.replace(/\D/g,'') === cpfArr || selRefresh.options[i].text.replace(/\D/g,'') === cpfArr){
-                    if(jq) jq(selRefresh).val(selRefresh.options[i].value).trigger('change');
-                    else { selRefresh.value = selRefresh.options[i].value; selRefresh.dispatchEvent(new Event('change',{bubbles:true})); }
-                    break;
-                }
-            }
         }
     }
     await delay(1000);
