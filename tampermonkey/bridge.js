@@ -560,17 +560,64 @@
   async function fluxoInclusao(task) {
     enviarStatus('running', 'Inclusao avulsa', {step:'inclusao'});
     var transp = (task.transportador || task.credenciais.cpf || '').replace(/\D/g, '');
+    var tipoVeiculo = (task.tipo_veiculo || task.tipoVeiculo || 'proprio').toLowerCase();
+    var placa = task.placa || '';
+    var renavam = task.renavam || '';
 
-    // Navega pra gerenciamento de frota se necessário
+    // ── DESVIO: Se terceiro, faz arrendamento primeiro ──
+    if (tipoVeiculo === 'terceiro' && placa && renavam) {
+      enviarStatus('running', 'Terceiro: arrendamento antes da inclusao', {step:'desvio_arrendamento'});
+
+      // Salva estado pra retomar após arrendamento
+      salvarEstado('inclusao_pendente_arrendamento', {
+        transportador: transp, placa: placa, renavam: renavam,
+        credenciais: task.credenciais,
+        arrendamento: task.arrendamento || {}
+      });
+
+      // Navega pra tela de arrendamento
+      window.location.href = 'https://rntrcdigital.antt.gov.br/ContratoArrendamento/Criar';
+      return;
+      // O fluxo continua em verificarEstadoPendente() após redirecionamento de sucesso
+    }
+
+    // ── PRÓPRIO ou sem desvio: inclusão direta ──
+    await navegarGerenciamentoFrota(transp);
+
+    // Incluir veículo
+    if (placa && renavam) {
+      enviarStatus('running', 'Incluindo ' + placa, {step:'veiculo'});
+      await processarInclusaoVeiculo(placa, renavam);
+      await delay(2000);
+    }
+
+    // Veículos extras (array)
+    var veiculos = task.veiculos || [];
+    for (var i = 0; i < veiculos.length; i++) {
+      enviarStatus('running', 'Veiculo ' + (i+1) + '/' + veiculos.length, {step:'veiculo_'+(i+1)});
+      await processarInclusaoVeiculo(veiculos[i].placa, veiculos[i].renavam);
+      await delay(2000);
+    }
+
+    // Finalizar
+    enviarStatus('running', 'Finalizando...', {step:'finalizar'});
+    var btnFin = document.querySelector('#btnFinalizar, [data-action*="Finalizar"]');
+    if(btnFin) { btnFin.click(); await delay(3000); }
+    var btnConfFin = document.querySelector('.modal .btn-primary, .btn-confirmar');
+    if(btnConfFin) { btnConfFin.click(); await delay(3000); }
+
+    enviarStatus('done', 'Inclusao concluida!');
+  }
+
+  // ── Utilitário: navegar pro gerenciamento de frota e selecionar transportador ──
+  async function navegarGerenciamentoFrota(transp) {
     if (location.href.indexOf('Transportador') === -1 && location.href.indexOf('GerenciamentoFrota') === -1) {
-      // Abre dropdown transportador
       var dd = document.querySelector('#dropdownTransportador, [data-toggle="dropdown"]');
       if(dd) { dd.click(); await delay(1500); }
       var gf = document.querySelector('a[href*="GerenciamentoFrota"], a[href*="Movimentacao"]');
       if(gf) { gf.click(); await delay(3000); }
     }
 
-    // Seleciona transportador no dropdown
     enviarStatus('running', 'Selecionando transportador...', {step:'dropdown'});
     await delay(2000);
     var found = false;
@@ -586,28 +633,8 @@
     if(!found) { enviarStatus('error', 'Transportador nao encontrado: ' + transp); return; }
     await delay(2000);
 
-    // Criar pedido
     var btnCriar = document.querySelector('#btnCriarPedido, [data-action*="Criar"], button[type="submit"]');
     if(btnCriar) { btnCriar.click(); await delay(3000); }
-
-    // Incluir veículos
-    var veiculos = task.veiculos || [];
-    if(task.placa && task.renavam) veiculos.push({placa:task.placa, renavam:task.renavam});
-
-    for(var i=0; i<veiculos.length; i++) {
-      enviarStatus('running', 'Veiculo ' + (i+1) + '/' + veiculos.length, {step:'veiculo_'+(i+1)});
-      await processarInclusaoVeiculo(veiculos[i].placa, veiculos[i].renavam);
-      await delay(2000);
-    }
-
-    // Finalizar
-    enviarStatus('running', 'Finalizando...', {step:'finalizar'});
-    var btnFin = document.querySelector('#btnFinalizar, [data-action*="Finalizar"]');
-    if(btnFin) { btnFin.click(); await delay(3000); }
-    var btnConfFin = document.querySelector('.modal .btn-primary, .btn-confirmar');
-    if(btnConfFin) { btnConfFin.click(); await delay(3000); }
-
-    enviarStatus('done', 'Inclusao concluida!');
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -700,12 +727,18 @@
       enviarStatus('done', 'Arrendamento concluido!');
       log('Arrendamento OK — redirecionado', 'ok');
 
-      // Se veio de um cadastro (desvio), restaura
+      // Verifica de qual desvio veio
       var estadoPendente = lerEstado();
-      if(estadoPendente && estadoPendente.estado === 'pendente_arrendamento') {
+      if (estadoPendente && estadoPendente.estado === 'pendente_arrendamento') {
+        // Veio do cadastro CPF/CNPJ — volta pra tela de cadastro
         log('Retornando ao cadastro...', 'ok');
         salvarEstado('retorno_cadastro', estadoPendente.dados);
         window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/Cadastro';
+      } else if (estadoPendente && estadoPendente.estado === 'inclusao_pendente_arrendamento') {
+        // Veio da inclusão avulsa — volta pro gerenciamento de frota
+        log('Retornando a inclusao avulsa...', 'ok');
+        salvarEstado('retorno_inclusao_avulsa', estadoPendente.dados);
+        window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/GerenciarFrota';
       }
     } catch(e) {
       enviarStatus('error', 'Arrendamento pode ter falhado — nao redirecionou.');
@@ -1003,12 +1036,28 @@
 
     // Arrendamento pendente (desvio do cadastro)
     if (isANTT && estado.estado === 'pendente_arrendamento' && location.href.indexOf('ContratoArrendamento/Criar') !== -1) {
-      // Reconecta ao VPS e executa arrendamento
       setTimeout(function(){
         if(VPS_URL) conectar();
         setTimeout(function(){
           currentTask = estado.dados;
           fluxoArrendamento(estado.dados);
+        }, 2000);
+      }, 1000);
+      return;
+    }
+
+    // Arrendamento pendente (desvio da INCLUSÃO avulsa)
+    if (isANTT && estado.estado === 'inclusao_pendente_arrendamento' && location.href.indexOf('ContratoArrendamento/Criar') !== -1) {
+      setTimeout(function(){
+        if(VPS_URL) conectar();
+        setTimeout(function(){
+          currentTask = estado.dados;
+          // Monta task de arrendamento a partir dos dados salvos
+          var arrData = estado.dados.arrendamento || {};
+          arrData.placa = arrData.placa || estado.dados.placa || '';
+          arrData.renavam = arrData.renavam || estado.dados.renavam || '';
+          var arrTask = { modo: 'arrendamento', arrendamento: arrData, credenciais: estado.dados.credenciais };
+          fluxoArrendamento(arrTask);
         }, 2000);
       }, 1000);
       return;
@@ -1034,7 +1083,6 @@
         setTimeout(async function(){
           currentTask = estado.dados;
           limparEstado();
-          // Espera a aba de veículos e inclui
           enviarStatus('running', 'Retomando inclusao apos arrendamento', {step:'retorno_inclusao'});
           await delay(5000);
           var d = estado.dados.transportador || estado.dados;
@@ -1044,6 +1092,31 @@
             if(btnFin) { btnFin.click(); await delay(3000); }
             enviarStatus('done', 'Cadastro concluido (terceiro)!');
           }
+        }, 2000);
+      }, 1000);
+      return;
+    }
+
+    // Retorno à inclusão avulsa após arrendamento
+    if (isANTT && estado.estado === 'retorno_inclusao_avulsa') {
+      log('Retomando inclusao avulsa apos arrendamento...', 'ok');
+      setTimeout(function(){
+        if(VPS_URL) conectar();
+        setTimeout(async function(){
+          currentTask = estado.dados;
+          limparEstado();
+          enviarStatus('running', 'Retomando inclusao avulsa', {step:'retorno_inclusao'});
+          var transp = (estado.dados.transportador || '').replace(/\D/g, '');
+          await navegarGerenciamentoFrota(transp);
+          if(estado.dados.placa && estado.dados.renavam) {
+            await processarInclusaoVeiculo(estado.dados.placa, estado.dados.renavam);
+            await delay(2000);
+          }
+          var btnFin = document.querySelector('#btnFinalizar, [data-action*="Finalizar"]');
+          if(btnFin) { btnFin.click(); await delay(3000); }
+          var btnConf = document.querySelector('.modal .btn-primary, .btn-confirmar');
+          if(btnConf) { btnConf.click(); await delay(3000); }
+          enviarStatus('done', 'Inclusao avulsa concluida (terceiro)!');
         }, 2000);
       }, 1000);
       return;

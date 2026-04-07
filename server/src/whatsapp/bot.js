@@ -18,27 +18,27 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 
 [SESSION_DIR, IMPORT_DIR, DOWNLOAD_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
-// ═══ TEMPLATES ═══
+// ═══ TEMPLATES (negrito WhatsApp, anti-link preview) ═══
 const TEMPLATES = {
   cadcpf: {
     header: '[OMEGA CADASTRO CPF]',
     fields: ['Login','Senha','CNH','UF','CEP','Logradouro','Numero','Complemento','Bairro','Tipo Veiculo (Proprio/Terceiro/Nao)','Placa','Renavam','CPF Arrendante','Nome Arrendante','CPF Arrendatario','Nome Arrendatario'],
-    help: 'Preencha TODOS os campos. Campos sem valor = deixe vazio.\nTipo Veiculo: Proprio, Terceiro ou Nao.\nSe Nao = cadastro sem veiculo.\nSe Terceiro = faz arrendamento automatico.'
+    help: 'Preencha TODOS os campos. Sem valor = deixe vazio.\nTipo Veiculo: Proprio, Terceiro ou Nao.\nSe Nao = cadastro sem veiculo.\nSe Terceiro = arrendamento automatico.\nLogin = CPF da conta Gov-br.'
   },
   cadcnpj: {
     header: '[OMEGA CADASTRO CNPJ]',
     fields: ['Login','Senha','CNPJ','CEP','Logradouro','Numero','Complemento','Bairro','Telefone','Email','CPF Socio','Tipo Veiculo (Proprio/Terceiro/Nao)','Placa','Renavam','CPF Arrendante','Nome Arrendante','CPF Arrendatario','Nome Arrendatario'],
-    help: 'Login = CPF do colaborador.\nSenha = senha Gov.br do colaborador.\nCNPJ = empresa a cadastrar.'
+    help: 'Login = CPF do colaborador (conta Gov-br).\nSenha = senha da conta Gov-br.\nCNPJ = empresa a cadastrar.'
   },
   inclusao: {
     header: '[OMEGA INCLUSAO]',
-    fields: ['Login','Senha','Transportador','Placa','Renavam'],
-    help: 'Transportador = CPF ou CNPJ do transportador.\nMultiplos veiculos: envie um comando por veiculo.'
+    fields: ['Login','Senha','Transportador (CPF/CNPJ)','Tipo Veiculo (Proprio/Terceiro)','Placa','Renavam','CPF Arrendante','Nome Arrendante','CPF Arrendatario','Nome Arrendatario'],
+    help: 'Transportador = CPF ou CNPJ do transportador.\nTipo Veiculo: Proprio ou Terceiro.\nSe Terceiro: o sistema fara o arrendamento automatico antes da inclusao.'
   },
   arrendamento: {
     header: '[OMEGA ARRENDAMENTO]',
     fields: ['Login','Senha','Placa','Renavam','CPF Arrendante','Nome Arrendante','CPF Arrendatario','Nome Arrendatario'],
-    help: 'Arrendamento avulso (sem cadastro).'
+    help: 'Arrendamento avulso (sem cadastro).\nLogin = CPF da conta Gov-br.'
   }
 };
 
@@ -47,7 +47,7 @@ function gerarTemplate(tipo) {
   const t = TEMPLATES[tipo];
   if (!t) return null;
   let msg = t.header + '\n';
-  t.fields.forEach(f => { msg += f + ': \n'; });
+  t.fields.forEach(f => { msg += '*' + f + ':* \n'; });
   msg += '\n_' + t.help + '_';
   return msg;
 }
@@ -116,8 +116,14 @@ function parseTemplate(body) {
     case 'inclusao': return {
       modo: 'inclusao',
       credenciais: { cpf: data.login || '', senha: data.senha || '' },
-      transportador: data.transportador || '',
-      placa: data.placa || '', renavam: data.renavam || ''
+      transportador: data.transportador_cpfcnpj || data.transportador || '',
+      tipo_veiculo: data.tipo_veiculo_proprioterceiro || data.tipo_veiculo || 'proprio',
+      placa: data.placa || '', renavam: data.renavam || '',
+      arrendamento: {
+        placa: data.placa || '', renavam: data.renavam || '',
+        cpf_arrendante: data.cpf_arrendante || '', nome_arrendante: data.nome_arrendante || '',
+        cpf_arrendatario: data.cpf_arrendatario || '', nome_arrendatario: data.nome_arrendatario || ''
+      }
     };
 
     case 'arrendamento': return {
@@ -254,7 +260,7 @@ client.on('message_create', async msg => {
     if (text.toLowerCase() === '!inclusao') { await msg.reply(gerarTemplate('inclusao')); return; }
     if (text.toLowerCase() === '!arrendamento') { await msg.reply(gerarTemplate('arrendamento')); return; }
     if (text.toLowerCase() === '/ajuda' || text.toLowerCase() === '/help') {
-      await msg.reply('*Omega Bot v4.0*\n\n📋 Comandos:\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusão avulsa\n!arrendamento — Arrendamento avulso\n/status — Status da automação\n\n📄 Envie documentos e depois um CODIGO pra salvar.');
+      await msg.reply('*Omega Bot v4.0*\n\n📋 Comandos:\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento avulso\n/status — Status da automacao\n\n📄 Envie documentos e depois um CODIGO pra salvar.');
       return;
     }
     if (text.toLowerCase() === '/status') {
