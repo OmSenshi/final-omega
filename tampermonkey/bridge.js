@@ -1,5 +1,5 @@
 // bridge.js — Final Omega v5.6 (Sunshine Edition)
-// Fix URL Maiúscula + Polling Verificado + Reatividade Vue
+// HTTP Polling nativo, Hack da Senha Vue.js, Roteamento e Eixos
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -116,6 +116,7 @@
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
   }
 
+  // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent=''
@@ -192,8 +193,6 @@
       if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
       
       if(govPollInterval) clearInterval(govPollInterval);
-      
-      // FORÇAR MINÚSCULAS PARA O REPLACE FUNCIONAR
       var baseWs = VPS_URL.toLowerCase().trim();
       var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
 
@@ -221,11 +220,10 @@
               },
               onerror: function() {
                   connected=false;
-                  atualizarGovStatus('Erro de Conexao (Servidor offline?)','err');
+                  atualizarGovStatus('Erro de Conexao','err');
               }
           });
       }
-
       fazerPoll();
       govPollInterval = setInterval(fazerPoll, 3000);
     }
@@ -258,7 +256,6 @@
   function conectar(){
     if(paused||!VPS_URL)return;if(ws){try{ws.close();}catch(e){}ws=null;}log('Conectando...','ok');
     
-    // FIX DA URL MAIUSCULA
     var wsUrl = VPS_URL.toLowerCase().trim();
     if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws');
     if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
@@ -289,6 +286,9 @@
     executarFluxo(msg);
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // O GOLPE DO VUE.JS (Hack da Senha)
+  // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
     var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
@@ -297,18 +297,21 @@
       var cpfF=await waitForElement('#accountId',15000);await typeSlowly(cpfF,cred.cpf.replace(/\D/g,''),60);await delay(500);
       var btnC=await waitForElement('#enter-account-id',5000);btnC.click();await delay(3000);
       try{
-        var senhaF=await waitForElement('input#password[type="password"]',20000);await delay(1000);
-        senhaF.focus(); senhaF.click(); await delay(500);
-        for(var i=0; i<cred.senha.length; i++){
-            senhaF.value = cred.senha.substring(0, i+1);
-            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
-            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
-            senhaF.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, key: cred.senha[i]}));
-            await delay(80);
-        }
-        senhaF.dispatchEvent(new Event('blur', {bubbles: true})); await delay(500);
+        var senhaF=await waitForElement('#password',20000);await delay(1000);
+        
+        // HACK NATIVO: Engana o framework injetando o valor na raiz do elemento
+        senhaF.focus();
+        var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        nativeInputValueSetter.call(senhaF, cred.senha);
+        
+        // Dispara os eventos pro Vue/React "acordar" e ler a nova senha
+        senhaF.dispatchEvent(new Event('input', {bubbles: true}));
+        senhaF.dispatchEvent(new Event('change', {bubbles: true}));
+        await delay(500);
+        
         var btnE=await waitForElement('#submit-button',3000);btnE.click();await delay(3000);
       }catch(e){log('Senha falhou','warn');salvarEstado('aguardando_captcha',estado.dados);enviarStatus('error','hCaptcha. Resolva manualmente.');return;}
+      
       try{await waitForElement('.login-mandatory-mfa-acquiring',5000);var bSkip=await waitUntilEnabled('button[value="confirm-skip-mandatory-mfa"]',120000);bSkip.click();await delay(1000);try{var cb=await waitForElement('#confirmSkipMandatoryMfaCheckBox',5000);cb.checked=true;cb.click();cb.dispatchEvent(new Event('change',{bubbles:true}));await delay(500);var bConf=await waitForElement('#confirmSkipMandatoryMfaButton',3000);bConf.click();await delay(2000);}catch(e){}}catch(e){}
       try{await waitForElement('#authorize-info',5000);var bAuth=await waitForElement('button[name="user_oauth_approval"][value="true"]',5000);bAuth.click();await delay(3000);}catch(e){}
     }catch(e){log('Erro login: '+e.message,'err');enviarStatus('error','Login: '+e.message);}
