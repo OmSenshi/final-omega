@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Final Omega v6.0 Sunshine
+// @name         Final Omega v7.0 Sunshine
 // @namespace    https://github.com/OmSenshi/final-omega
-// @version      6.0
+// @version      7.0
 // @description  Automacao ANTT — Bolinha Inteligente e Limpa
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
