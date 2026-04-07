@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v6.1 (Sunshine Edition)
-// HTTP Polling nativo, Máquina de Estados Gov.br, Safeload, Roteamento e Eixos
+// bridge.js — Final Omega v6.2 (Sunshine Edition)
+// Roteador Inteligente, Máquina de Estados Segura, Resgate Async, Hack Gov.br
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -75,7 +75,7 @@
     });
   }
 
-  function salvarEstado(nome, dados) { gmSet('omega_state', JSON.stringify({ estado: nome, dados: dados, ts: Date.now(), returnUrl: window.location.href })); log('Estado: ' + nome, 'ok'); }
+  function salvarEstado(nome, dados) { gmSet('omega_state', JSON.stringify({ estado: nome, dados: dados, ts: Date.now(), returnUrl: window.location.href })); log('Estado salvo: ' + nome, 'ok'); }
   function lerEstado() { try { var r = gmGet('omega_state',''); if(!r)return null; var s=JSON.parse(r); if(Date.now()-s.ts>900000){limparEstado();return null;} return s; } catch(e){return null;} }
   function limparEstado() { gmSet('omega_state', ''); }
 
@@ -116,6 +116,7 @@
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
   }
 
+  // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent=''
@@ -288,7 +289,7 @@
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
     if(msg.credenciais&&msg.credenciais.cpf&&msg.credenciais.senha){
-      if(isANTT){ executarFluxo(msg); return; }
+      if(isANTT){ executarFluxo(msg); return; } // Se já estiver na ANTT, ignora Gov.br
       salvarEstado('login_govbr',msg);
       processarLoginGovBr();
       return;
@@ -297,13 +298,12 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR (Corrige erro Timeout: #accountId)
+  // MÁQUINA DE ESTADOS GOV.BR (Vue.js Hack)
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
     var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
     
-    // Dá 1 segundo pro Vue.js desenhar a tela completamente
     await delay(1000); 
 
     try {
@@ -355,7 +355,6 @@
             return;
         }
 
-        // EXCEÇÃO: Captcha ou tela desconhecida
         if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
             log('Captcha detectado','warn');
             salvarEstado('aguardando_captcha',estado.dados);
@@ -368,6 +367,78 @@
         log('Erro login: '+e.message,'err');
         enviarStatus('error','Login: '+e.message);
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // ROTEADOR CENTRAL E EXECUÇÃO (O Fim dos "Atropelamentos")
+  // ══════════════════════════════════════════════════════════════
+  async function executarFluxo(task){
+    try{
+      // ── Roteador: Garante que o robô viaja pra URL certa antes de começar ──
+      if ((task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro') && location.href.indexOf('Transportador/Cadastro') === -1 && location.href.indexOf('Pedido/Criar') === -1) {
+          enviarStatus('running', 'Navegando para Cadastro...');
+          salvarEstado('tarefa_pendente_navegacao', task);
+          window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/Cadastro';
+          return;
+      }
+      if ((task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') && location.href.indexOf('GerenciarFrota') === -1 && location.href.indexOf('GerenciamentoFrota') === -1 && location.href.indexOf('Movimentacao') === -1) {
+          enviarStatus('running', 'Navegando para Frota...');
+          salvarEstado('tarefa_pendente_navegacao', task);
+          window.location.href = 'https://rntrcdigital.antt.gov.br/Transportador/GerenciarFrota';
+          return;
+      }
+      if ((task.modo === 'arrendamento' || task.modo === 'arrendamento_avulso') && location.href.indexOf('ContratoArrendamento/Criar') === -1) {
+          enviarStatus('running', 'Navegando para Arrendamento...');
+          salvarEstado('tarefa_pendente_navegacao', task);
+          window.location.href = 'https://rntrcdigital.antt.gov.br/ContratoArrendamento/Criar';
+          return;
+      }
+
+      // Se já está na URL certa, executa o preenchimento!
+      switch(task.modo){
+        case 'cadcpf':await fluxoCadastroCPF(task);break;
+        case 'cadcnpj':await fluxoCadastroCNPJ(task);break;
+        case 'inclusao':await fluxoInclusao(task);break;
+        case 'arrendamento':await fluxoArrendamento(task);break;
+        case 'cadastro':if(task.tipo==='cnpj')await fluxoCadastroCNPJ(task);else await fluxoCadastroCPF(task);break;
+        case 'arrendamento_avulso':await fluxoArrendamento(task);break;
+        case 'inclusao_avulsa':await fluxoInclusao(task);break;
+        default:enviarStatus('error','Modo desconhecido: '+task.modo);
+      }
+    }catch(e){enviarStatus('error_critical','Fatal: '+e.message);log('FATAL: '+e.message,'err');}
+    finally{currentTask=null;releaseWakeLock();limparEstado();}
+  }
+
+  function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
+
+  // ══════════════════════════════════════════════════════════════
+  // FUNÇÕES DE FLUXO (Sem cliques mágicos, puro preenchimento)
+  // ══════════════════════════════════════════════════════════════
+
+  async function navegarGerenciamentoFrota(transp){
+    enviarStatus('running','Selecionando transportador...',{step:'dropdown'});
+    await delay(2000);
+    var found=false;
+    document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1||sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));found=true;break;}}});
+    if(!found){enviarStatus('error','Transportador nao encontrado: '+transp);return false;}
+    await delay(2000);return true;
+  }
+
+  async function criarPedidoComResgate(cpfCnpj, task){
+    var btnCriar=document.querySelector('#btnCriarPedido,[data-action*="Criar"],button[type="submit"]'); 
+    if(!btnCriar)return true; 
+    
+    btnCriar.click();
+    var resultado = await waitForToastOrSuccess('.nav-tabs, #Identidade, #TransportadorEtc_SituacaoCapacidadeFinanceira', 10000);
+    
+    if(resultado.tipo === 'toast_erro' && resultado.texto.indexOf('pedido') !== -1){ 
+        log('Toast erro detectado. Iniciando Resgate...','err');
+        salvarEstado('resgate_pedido', { cpfCnpj: cpfCnpj, task: task });
+        window.location.href = 'https://rntrcdigital.antt.gov.br/AcompanharPedidos';
+        return false; 
+    }
+    await delay(2000);
+    return true;
   }
 
   async function processarInclusaoVeiculo(placa,renavam){
@@ -408,66 +479,6 @@
     if(bs){bs.removeAttribute('disabled');bs.click();log('Salvo: '+placa,'ok');enviarStatus('running','Salvo: '+placa,{step:'veiculo_ok'});}
     else throw new Error('Botao salvar nao encontrado');
     await delay(1500);try{document.querySelectorAll('.toast-close-button').forEach(function(b){b.click();});}catch(e){}
-  }
-
-  async function recuperarPedidoPreso(cpfCnpj) {
-    log('Resgate: pedido preso detectado','warn'); enviarStatus('running','Resgatando pedido preso...',{step:'resgate'});
-    window.location.href = 'https://rntrcdigital.antt.gov.br/AcompanharPedidos'; await delay(5000);
-    try {
-      var selDoc = await waitForElement('#CpfCnpjTransportadorCertificado', 10000);
-      var jq = unsafeWindow.jQuery || unsafeWindow.$;
-      for(var i=0;i<selDoc.options.length;i++){ if(selDoc.options[i].value.replace(/\D/g,'').indexOf(cpfCnpj.replace(/\D/g,''))!==-1){ selDoc.value=selDoc.options[i].value; if(jq)jq(selDoc).trigger('change');else selDoc.dispatchEvent(new Event('change',{bubbles:true})); break; } }
-      await delay(500);
-      var selSit = document.getElementById('SituacaoPedido'); if(selSit){selSit.value='CAD';selSit.dispatchEvent(new Event('change',{bubbles:true}));} await delay(300);
-      var btnConsultar = document.querySelector('.btn-consultar, button.btn-blue'); if(btnConsultar) btnConsultar.click(); await delay(3000);
-      var rows = document.querySelectorAll('table tbody tr, .table tbody tr'); var encontrou = false;
-      for(var r=0;r<rows.length;r++){
-        if((rows[r].textContent||'').indexOf('EM CADASTRAMENTO') === -1) continue;
-        var btnEditar = rows[r].querySelector('a[title="Editar"]');
-        if(btnEditar){ window.location.href = btnEditar.getAttribute('href').startsWith('http') ? btnEditar.getAttribute('href') : 'https://rntrcdigital.antt.gov.br' + btnEditar.getAttribute('href'); encontrou = true; break; }
-        var btnHist = rows[r].querySelector('a[title="Histórico"], a[data-toggle-modal="true"], .fa-inbox');
-        if(btnHist){
-          if(btnHist.tagName === 'I') btnHist = btnHist.closest('a'); if(btnHist) btnHist.click(); await delay(2000);
-          var detalhes = {dataHora:'?',situacao:'?',usuario:'?',nome:'?',entidade:'?'};
-          try{ var lis = document.querySelectorAll('.modal-body li'); lis.forEach(function(li){ var label = (li.childNodes[0]||{}).textContent||''; var valor = (li.querySelector('span')||li.querySelector('p')||{}).textContent||''; if(label.indexOf('Data')!==-1) detalhes.dataHora = valor.trim(); else if(label.indexOf('Situa')!==-1) detalhes.situacao = valor.trim(); else if(label.indexOf('Usu')!==-1) detalhes.usuario = valor.trim(); else if(label.indexOf('Nome')!==-1) detalhes.nome = valor.trim(); }); }catch(e){}
-          enviarStatus('erro_fatal','Pedido bloqueado por: '+(detalhes.nome||detalhes.usuario),{detalhes:detalhes}); encontrou = true; break;
-        }
-      }
-      if(!encontrou) enviarStatus('error','Nenhum pedido em cadastramento encontrado.');
-    }catch(e){ enviarStatus('error','Falha no resgate: '+e.message); }
-  }
-
-  async function executarFluxo(task){
-    try{
-      switch(task.modo){
-        case 'cadcpf':await fluxoCadastroCPF(task);break;
-        case 'cadcnpj':await fluxoCadastroCNPJ(task);break;
-        case 'inclusao':await fluxoInclusao(task);break;
-        case 'arrendamento':await fluxoArrendamento(task);break;
-        case 'cadastro':if(task.tipo==='cnpj')await fluxoCadastroCNPJ(task);else await fluxoCadastroCPF(task);break;
-        case 'arrendamento_avulso':await fluxoArrendamento(task);break;
-        case 'inclusao_avulsa':await fluxoInclusao(task);break;
-        default:enviarStatus('error','Modo desconhecido: '+task.modo);
-      }
-    }catch(e){enviarStatus('error_critical','Fatal: '+e.message);log('FATAL: '+e.message,'err');}
-    finally{currentTask=null;releaseWakeLock();limparEstado();}
-  }
-
-  function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
-
-  async function navegarGerenciamentoFrota(transp){
-    if(location.href.indexOf('Transportador')===-1&&location.href.indexOf('GerenciamentoFrota')===-1){ var dd=document.querySelector('#dropdownTransportador,[data-toggle="dropdown"]');if(dd){dd.click();await delay(1500);} var gf=document.querySelector('a[href*="GerenciamentoFrota"],a[href*="Movimentacao"]');if(gf){gf.click();await delay(3000);} }
-    enviarStatus('running','Selecionando transportador...',{step:'dropdown'});await delay(2000);
-    var found=false;document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1||sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));found=true;break;}}});
-    if(!found){enviarStatus('error','Transportador nao encontrado: '+transp);return false;}
-    await delay(2000);return true;
-  }
-
-  async function criarPedidoComResgate(cpfCnpj){
-    var btnCriar=document.querySelector('#btnCriarPedido,[data-action*="Criar"],button[type="submit"]'); if(!btnCriar)return; btnCriar.click();
-    var resultado = await waitForToastOrSuccess('.nav-tabs, #Identidade, #TransportadorEtc_SituacaoCapacidadeFinanceira', 10000);
-    if(resultado.tipo === 'toast_erro' && resultado.texto.indexOf('pedido') !== -1){ await recuperarPedidoPreso(cpfCnpj); return; }
-    await delay(2000);
   }
 
   async function preencherEndereco(d){
@@ -517,6 +528,78 @@
 
   function gerarEmailAleatorio(){var c='abcdefghijklmnopqrstuvwxyz0123456789',s='';for(var i=0;i<12;i++)s+=c[Math.floor(Math.random()*c.length)];return s+'@yahoo.com';}
 
+  // ══════════════════════════════════════════════════════════════
+  // MÁQUINA DE RESGATE (O Botão Editar)
+  // ══════════════════════════════════════════════════════════════
+  async function executarResgateNaPagina(cpfCnpj, task) {
+    try {
+      enviarStatus('running', 'Processando resgate...', {step:'resgate_ok'});
+      var selDoc = await waitForElement('#CpfCnpjTransportadorCertificado', 10000);
+      var jq = unsafeWindow.jQuery || unsafeWindow.$;
+      for(var i=0;i<selDoc.options.length;i++){ if(selDoc.options[i].value.replace(/\D/g,'').indexOf(cpfCnpj.replace(/\D/g,''))!==-1){ selDoc.value=selDoc.options[i].value; if(jq)jq(selDoc).trigger('change');else selDoc.dispatchEvent(new Event('change',{bubbles:true})); break; } }
+      await delay(500);
+      var selSit = document.getElementById('SituacaoPedido'); if(selSit){selSit.value='CAD';selSit.dispatchEvent(new Event('change',{bubbles:true}));} await delay(300);
+      var btnConsultar = document.querySelector('.btn-consultar, button.btn-blue'); if(btnConsultar) btnConsultar.click(); await delay(3000);
+      var rows = document.querySelectorAll('table tbody tr, .table tbody tr'); var encontrou = false;
+      for(var r=0;r<rows.length;r++){
+        if((rows[r].textContent||'').indexOf('EM CADASTRAMENTO') === -1) continue;
+        var btnEditar = rows[r].querySelector('a[title="Editar"]');
+        if(btnEditar){
+            var href = btnEditar.getAttribute('href');
+            salvarEstado('tarefa_pendente_navegacao', task);
+            window.location.href = href.startsWith('http') ? href : 'https://rntrcdigital.antt.gov.br' + href;
+            encontrou = true; break;
+        }
+        var btnHist = rows[r].querySelector('a[title="Histórico"], a[data-toggle-modal="true"], .fa-inbox');
+        if(btnHist){
+          if(btnHist.tagName === 'I') btnHist = btnHist.closest('a'); if(btnHist) btnHist.click(); await delay(2000);
+          var detalhes = {dataHora:'?',situacao:'?',usuario:'?',nome:'?',entidade:'?'};
+          try{ var lis = document.querySelectorAll('.modal-body li'); lis.forEach(function(li){ var label = (li.childNodes[0]||{}).textContent||''; var valor = (li.querySelector('span')||li.querySelector('p')||{}).textContent||''; if(label.indexOf('Data')!==-1) detalhes.dataHora = valor.trim(); else if(label.indexOf('Situa')!==-1) detalhes.situacao = valor.trim(); else if(label.indexOf('Usu')!==-1) detalhes.usuario = valor.trim(); else if(label.indexOf('Nome')!==-1) detalhes.nome = valor.trim(); }); }catch(e){}
+          enviarStatus('erro_fatal','Pedido bloqueado por: '+(detalhes.nome||detalhes.usuario),{detalhes:detalhes}); encontrou = true; limparEstado(); break;
+        }
+      }
+      if(!encontrou) { enviarStatus('error','Nenhum pedido em cadastramento encontrado.'); limparEstado(); }
+    } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // OS 4 FLUXOS PRINCIPAIS
+  // ══════════════════════════════════════════════════════════════
+
+  async function fluxoCadastroCPF(task){
+    enviarStatus('running','Cadastro CPF',{step:'cadastro_cpf'});var d=task.transportador||task;
+    var cpfLogin=(task.credenciais&&task.credenciais.cpf||'').replace(/\D/g,'');await delay(2000);
+    document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(cpfLogin)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));break;}}});
+    await delay(1500); 
+    
+    var ok = await criarPedidoComResgate(cpfLogin, task);
+    if (!ok) return; // Se for para o resgate, a página recarrega e para a execução atual
+
+    enviarStatus('running','Dados CPF...',{step:'dados_cpf'});
+    var idf=document.getElementById('Identidade');if(idf){idf.value=d.identidade||d.cnh||'000000';idf.dispatchEvent(new Event('change',{bubbles:true}));}
+    try{document.querySelector('#OrgaoEmissor').value='SSP';document.querySelector('#OrgaoEmissor').dispatchEvent(new Event('change',{bubbles:true}));}catch(e){}
+    if(d.uf){try{var uf=document.querySelector('#UfIdentidade');if(uf){uf.value=d.uf.toUpperCase();uf.dispatchEvent(new Event('change',{bubbles:true}));}}catch(e){}}
+    await preencherEndereco(d); await processarVeiculos(task);
+  }
+
+  async function fluxoCadastroCNPJ(task){
+    enviarStatus('running','Cadastro CNPJ',{step:'cadastro_cnpj'});var d=task.transportador||task;
+    var cnpj=(d.cnpj||(task.cnpj_data&&task.cnpj_data.cnpj)||'').replace(/\D/g,'');await delay(2000);
+    document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(cnpj)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));break;}}});
+    await delay(1500); 
+
+    var ok = await criarPedidoComResgate(cnpj, task);
+    if (!ok) return;
+
+    enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'});
+    var cap=document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');if(cap){cap.checked=true;cap.dispatchEvent(new Event('change',{bubbles:true}));}
+    await preencherEndereco(d);
+    var tel=d.telefone||'0000000000';await adicionarContato('2',tel);await delay(1500);
+    var email=d.email||gerarEmailAleatorio();var eOk=await adicionarContato('4',email);if(!eOk){email=gerarEmailAleatorio();await adicionarContato('4',email);}
+    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; if(cpfSocio)await preencherGestor(cpfSocio.replace(/\D/g,''));
+    await preencherRT(); await processarVeiculos(task);
+  }
+
   async function fluxoInclusao(task){
     enviarStatus('running','Inclusao',{step:'inclusao'}); var transp=(task.transportador||task.credenciais.cpf||'').replace(/\D/g,''); var veiculos=task.veiculos||[];
     for(var vi=0;vi<veiculos.length;vi++){
@@ -526,7 +609,10 @@
         salvarEstado('inclusao_pendente_arrendamento',{transportador:transp,veiculos:veiculos,currentVehicleIndex:vi,credenciais:task.credenciais,arrendamento:{placa:v.placa,renavam:v.renavam,cpf_arrendante:v.cpf_arrendante||'',nome_arrendante:v.nome_arrendante||''}});
         window.location.href='https://rntrcdigital.antt.gov.br/ContratoArrendamento/Criar'; return;
       }
-      if(!vi){var ok=await navegarGerenciamentoFrota(transp);if(!ok)return;await criarPedidoComResgate(transp);}
+      if(!vi){
+          var okNav = await navegarGerenciamentoFrota(transp); if(!okNav) return;
+          var okRes = await criarPedidoComResgate(transp, task); if(!okRes) return;
+      }
       enviarStatus('running','Veiculo '+(vi+1)+'/'+veiculos.length+': '+v.placa,{step:'veiculo_'+(vi+1)});
       await processarInclusaoVeiculo(v.placa,v.renavam);await delay(2000);
     }
@@ -538,7 +624,6 @@
 
   async function fluxoArrendamento(task){
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
-    if(location.href.indexOf('ContratoArrendamento/Criar')===-1){salvarEstado('arrendamento',task);window.location.href='https://rntrcdigital.antt.gov.br/ContratoArrendamento/Criar';return;}
     await delay(2000); var cpfArr=(arr.cpf_arrendante||arr.cpf_cnpj_proprietario||'').replace(/\D/g,''); var jq=unsafeWindow.jQuery||unsafeWindow.$;
     if(cpfArr){var sel=document.getElementById('CPFCNPJArrendanteTransportador');if(sel&&jq){for(var i=0;i<sel.options.length;i++){if(sel.options[i].value.replace(/\D/g,'')===cpfArr||sel.options[i].text.replace(/\D/g,'')===cpfArr){jq(sel).val(sel.options[i].value).trigger('change');break;}}}}
     var cp=await waitForElement('#Placa',5000);cp.removeAttribute('disabled');await typeSlowly(cp,(arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase(),80);await delay(200);
@@ -557,32 +642,6 @@
       if(ep&&ep.estado==='pendente_arrendamento'){salvarEstado('retorno_cadastro',ep.dados);window.location.href='https://rntrcdigital.antt.gov.br/Transportador/Cadastro';}
       else if(ep&&ep.estado==='inclusao_pendente_arrendamento'){ var returnUrl=gmGet('omega_return_url','')||'https://rntrcdigital.antt.gov.br/Transportador/GerenciarFrota'; gmSet('omega_return_url',''); salvarEstado('retorno_inclusao_avulsa',ep.dados); window.location.href=returnUrl; }
     }catch(e){enviarStatus('error','Arrendamento falhou.');}
-  }
-
-  async function fluxoCadastroCPF(task){
-    enviarStatus('running','Cadastro CPF',{step:'cadastro_cpf'});var d=task.transportador||task;
-    if(location.href.indexOf('Transportador')===-1){var dd=document.querySelector('#dropdownTransportador,[data-toggle="dropdown"]');if(dd){dd.click();await delay(1500);}var nc=document.querySelector('a[href*="NovoCadastro"],a[href*="Pedido/Criar"]');if(nc){nc.click();await delay(3000);}}
-    var cpfLogin=(task.credenciais&&task.credenciais.cpf||'').replace(/\D/g,'');await delay(2000);
-    document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(cpfLogin)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));break;}}});
-    await delay(1500); await criarPedidoComResgate(cpfLogin); enviarStatus('running','Dados CPF...',{step:'dados_cpf'});
-    var idf=document.getElementById('Identidade');if(idf){idf.value=d.identidade||d.cnh||'000000';idf.dispatchEvent(new Event('change',{bubbles:true}));}
-    try{document.querySelector('#OrgaoEmissor').value='SSP';document.querySelector('#OrgaoEmissor').dispatchEvent(new Event('change',{bubbles:true}));}catch(e){}
-    if(d.uf){try{var uf=document.querySelector('#UfIdentidade');if(uf){uf.value=d.uf.toUpperCase();uf.dispatchEvent(new Event('change',{bubbles:true}));}}catch(e){}}
-    await preencherEndereco(d); await processarVeiculos(task);
-  }
-
-  async function fluxoCadastroCNPJ(task){
-    enviarStatus('running','Cadastro CNPJ',{step:'cadastro_cnpj'});var d=task.transportador||task;
-    if(location.href.indexOf('Transportador')===-1){var dd=document.querySelector('#dropdownTransportador,[data-toggle="dropdown"]');if(dd){dd.click();await delay(1500);}var nc=document.querySelector('a[href*="NovoCadastro"],a[href*="Pedido/Criar"]');if(nc){nc.click();await delay(3000);}}
-    var cnpj=(d.cnpj||(task.cnpj_data&&task.cnpj_data.cnpj)||'').replace(/\D/g,'');await delay(2000);
-    document.querySelectorAll('select').forEach(function(sel){for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(cnpj)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true}));break;}}});
-    await delay(1500); await criarPedidoComResgate(cnpj); enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'});
-    var cap=document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');if(cap){cap.checked=true;cap.dispatchEvent(new Event('change',{bubbles:true}));}
-    await preencherEndereco(d);
-    var tel=d.telefone||'0000000000';await adicionarContato('2',tel);await delay(1500);
-    var email=d.email||gerarEmailAleatorio();var eOk=await adicionarContato('4',email);if(!eOk){email=gerarEmailAleatorio();await adicionarContato('4',email);}
-    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; if(cpfSocio)await preencherGestor(cpfSocio.replace(/\D/g,''));
-    await preencherRT(); await processarVeiculos(task);
   }
 
   async function processarVeiculos(task){
@@ -611,14 +670,55 @@
     enviarStatus('done','Cadastro concluido!');
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // O GUARDA DE TRÂNSITO (Verificação Inteligente de Estado)
+  // ══════════════════════════════════════════════════════════════
   function verificarEstadoPendente(){
-    var estado=lerEstado();if(!estado)return; log('Estado: '+estado.estado,'warn');
+    var estado=lerEstado();if(!estado)return; log('Estado detectado: '+estado.estado,'warn');
+    
+    // Roteador 1: Logando no Gov.br
     if(isGovBr&&estado.estado==='login_govbr'){processarLoginGovBr();return;}
+
+    // Roteador 2: Chegou na ANTT após o login (Acorda e processa)
+    if(isANTT && estado.estado === 'login_govbr'){
+        log('Login via Gov.br concluido! Retomando tarefa original...', 'ok');
+        var tarefaPendente = estado.dados; 
+        limparEstado(); 
+        currentTask = tarefaPendente;
+        setTimeout(function(){
+             if(VPS_URL && !connected) conectar();
+             executarFluxo(tarefaPendente); // ExecutarFluxo vai navegar pra aba certa!
+        }, 2000);
+        return;
+    }
+
+    // Roteador 3: Chegou na página exata que precisava ir (Cadastro, Frota, etc)
+    if(isANTT && estado.estado === 'tarefa_pendente_navegacao'){
+        log('Pagina alvo alcancada. Iniciando preenchimento...', 'ok');
+        var tarefa = estado.dados;
+        limparEstado();
+        currentTask = tarefa;
+        setTimeout(function(){
+            if(VPS_URL && !connected) conectar();
+            executarFluxo(tarefa);
+        }, 2000);
+        return;
+    }
+
+    // Roteador 4: Iniciando Resgate do Pedido
+    if(isANTT && estado.estado === 'resgate_pedido' && location.href.indexOf('AcompanharPedidos') !== -1) {
+        setTimeout(function(){
+            if(VPS_URL && !connected) conectar();
+            executarResgateNaPagina(estado.dados.cpfCnpj, estado.dados.task);
+        }, 3000);
+        return;
+    }
+
     if(isANTT&&estado.estado==='pendente_arrendamento'&&location.href.indexOf('ContratoArrendamento/Criar')!==-1){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(function(){currentTask=estado.dados;fluxoArrendamento(estado.dados);},2000);},1000);return; }
     if(isANTT&&estado.estado==='inclusao_pendente_arrendamento'&&location.href.indexOf('ContratoArrendamento/Criar')!==-1){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(function(){currentTask=estado.dados;var arrData=estado.dados.arrendamento||{};arrData.placa=arrData.placa||estado.dados.placa||'';arrData.renavam=arrData.renavam||estado.dados.renavam||'';fluxoArrendamento({modo:'arrendamento',arrendamento:arrData,credenciais:estado.dados.credenciais});},2000);},1000);return; }
     if(isANTT&&estado.estado==='arrendamento'&&location.href.indexOf('ContratoArrendamento/Criar')!==-1){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(function(){currentTask=estado.dados;fluxoArrendamento(estado.dados);},2000);},1000);return; }
     if(isANTT&&estado.estado==='retorno_cadastro'){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(async function(){ currentTask=estado.dados;limparEstado();enviarStatus('running','Retomando...',{step:'retorno'});await delay(5000); var d=estado.dados;var vi=parseInt(gmGet('omega_current_vehicle_index','0'))||0; var veiculos=d.veiculos||[]; if(veiculos[vi]&&veiculos[vi].placa){await processarInclusaoVeiculo(veiculos[vi].placa,veiculos[vi].renavam);await delay(2000);} for(var j=vi+1;j<veiculos.length;j++){ var v=veiculos[j];if(!v.placa||(v.tipo_veiculo||'').toLowerCase()==='nao')continue; enviarStatus('running','Veiculo '+(j+1)+'/'+veiculos.length,{step:'veiculo_'+(j+1)}); await processarInclusaoVeiculo(v.placa,v.renavam);await delay(2000); } var btnFin=document.querySelector('#btnFinalizar,[data-action*="Finalizar"]');if(btnFin){btnFin.click();await delay(3000);} enviarStatus('done','Cadastro concluido!'); },2000);},1000);return; }
-    if(isANTT&&estado.estado==='retorno_inclusao_avulsa'){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(async function(){ currentTask=estado.dados;limparEstado();enviarStatus('running','Retomando inclusao...',{step:'retorno'}); var d=estado.dados;var transp=(d.transportador||'').replace(/\D/g,'');var vi=parseInt(gmGet('omega_current_vehicle_index','0'))||0; var veiculos=d.veiculos||[]; var ok=await navegarGerenciamentoFrota(transp);if(!ok)return; await criarPedidoComResgate(transp); for(var j=vi;j<veiculos.length;j++){ if(!veiculos[j].placa)continue; enviarStatus('running','Veiculo '+(j+1)+'/'+veiculos.length,{step:'veiculo_'+(j+1)}); await processarInclusaoVeiculo(veiculos[j].placa,veiculos[j].renavam);await delay(2000); } var btnFin=document.querySelector('#btnFinalizar,[data-action*="Finalizar"]');if(btnFin){btnFin.click();await delay(3000);} enviarStatus('done','Inclusao concluida!'); },2000);},1000);return; }
+    if(isANTT&&estado.estado==='retorno_inclusao_avulsa'){ setTimeout(function(){if(VPS_URL)conectar();setTimeout(async function(){ currentTask=estado.dados;limparEstado();enviarStatus('running','Retomando inclusao...',{step:'retorno'}); var d=estado.dados;var transp=(d.transportador||'').replace(/\D/g,'');var vi=parseInt(gmGet('omega_current_vehicle_index','0'))||0; var veiculos=d.veiculos||[]; var ok=await navegarGerenciamentoFrota(transp);if(!ok)return; await criarPedidoComResgate(transp, estado.dados); for(var j=vi;j<veiculos.length;j++){ if(!veiculos[j].placa)continue; enviarStatus('running','Veiculo '+(j+1)+'/'+veiculos.length,{step:'veiculo_'+(j+1)}); await processarInclusaoVeiculo(veiculos[j].placa,veiculos[j].renavam);await delay(2000); } var btnFin=document.querySelector('#btnFinalizar,[data-action*="Finalizar"]');if(btnFin){btnFin.click();await delay(3000);} enviarStatus('done','Inclusao concluida!'); },2000);},1000);return; }
   }
 
   if(VPS_URL&&!paused)setTimeout(function(){if(isGovBr)conectarGov();else conectar();},2000);
