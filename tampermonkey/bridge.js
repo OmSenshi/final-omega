@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v10.3 (Sunshine Edition)
-// Ultimate Asterisk Cleaner, Active ViaCEP Spy, Post-Load Address Injector
+// bridge.js — Final Omega v10.4 (Sunshine Edition)
+// Ultimate Toast Vaccine, Logradouro Click-Trigger, ViaCEP Race Fix
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -7,6 +7,15 @@
 
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
+
+  // VACINA GLOBAL ANTI-RELOAD DA ANTT
+  var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  setInterval(function() {
+      if (w.toastr && w.toastr.options) {
+          w.toastr.options.onHidden = null;
+          w.toastr.options.onCloseClick = null;
+      }
+  }, 1000);
 
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -72,9 +81,17 @@
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
   function limparToasts() {
+      var wg = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+      if (wg.toastr) {
+          try {
+              wg.toastr.options.onHidden = null;
+              wg.toastr.options.onCloseClick = null;
+              wg.toastr.clear();
+          } catch(e){}
+      }
       var tc = document.getElementById('toast-container');
       if (tc) { tc.innerHTML = ''; tc.remove(); }
-      document.querySelectorAll('.toast, .toast-success, .toast-error').forEach(function(t) { t.remove(); });
+      document.querySelectorAll('.toast, .toast-success, .toast-error, .toast-warning').forEach(function(t) { t.remove(); });
   }
 
   function typeSlowly(el, text, ms) {
@@ -242,7 +259,7 @@
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR
+  // MÁQUINA DE ESTADOS GOV.BR E TERMO DE USO
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
@@ -477,7 +494,6 @@
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
 
-    // O ESPIÃO DE MUNICÍPIO: Espera o ViaCEP terminar o AJAX
     async function esperarViaCEP() {
         var limite = 0;
         while(limite < 30) {
@@ -499,12 +515,17 @@
                 if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cepParaDigitar, { delay:60, onDone: resolve });
                 else typeSlowly(cf, cepParaDigitar, 60).then(resolve);
             });
-            cf.dispatchEvent(new Event('blur',{bubbles:true}));
+            
+            // O GATILHO: Clicar no Logradouro forçará a ANTT a acionar os Correios (ViaCEP)
+            var logTrigger = getVisible('#Logradouro');
+            if (logTrigger) { logTrigger.focus(); logTrigger.click(); }
+            else cf.dispatchEvent(new Event('blur',{bubbles:true}));
+            
             var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
             
             await delay(1000);
             await esperarViaCEP();
-            await delay(1000);
+            await delay(1000); // Respiro após o preenchimento automático
         }
     }
 
@@ -967,7 +988,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS
+  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
