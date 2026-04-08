@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v10.0 (Sunshine Edition)
-// ViaCEP Strict Wait, Strict Target Doc (Anti-Arrendatario Leak), Modal Collision Fix
+// bridge.js — Final Omega v10.1 (Sunshine Edition)
+// Universal Breath Delay, Active Form Hunter (Inclusao), Anti-Cache
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -110,7 +110,6 @@
   function lerEstado() { try { var r = gmGet('omega_state',''); if(!r)return null; var s=JSON.parse(r); if(Date.now()-s.ts>900000){limparEstado();return null;} return s; } catch(e){return null;} }
   function limparEstado() { gmSet('omega_state', ''); }
 
-  // GUARDA-COSTAS DO CNPJ: Nunca vai deixar vazar o CPF pro Arrendatário
   function getTargetDoc(task) {
       if (!task) return '';
       if (task.modo === 'arrendamento_avulso' || task.modo === 'arrendamento') {
@@ -246,7 +245,7 @@
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR E TERMO DE USO
+  // MÁQUINA DE ESTADOS GOV.BR
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
@@ -304,6 +303,9 @@
       currentTask = task;
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
+
+      // FÔLEGO UNIVERSAL: Aguarda o SPA da ANTT renderizar qualquer tela
+      await delay(2000);
 
       if (url.indexOf('Home/ExibirTermo') !== -1) {
           enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
@@ -406,9 +408,11 @@
     } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // INICIAR PEDIDO
+  // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
-      await delay(2000);
       var doc = getTargetDoc(task); 
       
       var sel = document.querySelector('select#CpfCnpjTransportador') || document.querySelector('select');
@@ -503,10 +507,8 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        
-        // Espera OBRIGATÓRIA para o ViaCEP da ANTT
-        await delay(1000);
-        await waitBlockUI(15000); 
+        await delay(500);
+        await waitBlockUI(10000); 
         await delay(1000);
     }
 
@@ -883,15 +885,37 @@
 
   async function fluxoInclusao(task){
     enviarStatus('running','Acessando Frota',{step:'inclusao'}); 
-    var transp=getTargetDoc(task);
+    var transp = getTargetDoc(task);
     
-    var btnCriar = document.querySelector('#btnCriarPedido') || document.querySelector('button[type="submit"]') || document.querySelector('.btn-primary');
-    var formAberto = document.querySelector('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
+    // CAÇADOR DE FORMULÁRIO (Espera Ativa)
+    var formAberto = null;
+    var btnCriar = null;
+
+    for(var i=0; i<20; i++){
+        formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
+        if(formAberto) break;
+        
+        btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
+        if(btnCriar) break;
+        
+        await delay(500);
+    }
     
-    if(!formAberto && btnCriar) {
+    if(formAberto) { 
+        await processarVeiculos(task); 
+        return; 
+    }
+
+    if(btnCriar) {
         var sel = document.querySelector('select');
         if(sel) {
-            for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1||sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true})); break;}}
+            for(var i=0;i<sel.options.length;i++){
+                if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1 || sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){
+                    sel.value=sel.options[i].value;
+                    sel.dispatchEvent(new Event('change',{bubbles:true})); 
+                    break;
+                }
+            }
         }
         await delay(1000);
         salvarEstado('tarefa_pendente_navegacao', task);
@@ -909,11 +933,12 @@
         setTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
-    if (formAberto) { await processarVeiculos(task); }
+    
+    enviarStatus('error', 'Painel de frota nao carregou a tempo.');
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS
+  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
