@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v10.2 (Sunshine Edition)
-// Ultimate ViaCEP Fallback, Deep Address Re-write, Nuclear Toasts
+// bridge.js — Final Omega v10.3 (Sunshine Edition)
+// Ultimate Asterisk Cleaner, Active ViaCEP Spy, Post-Load Address Injector
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -476,26 +476,25 @@
 
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
-    
-    var selTipo = getVisible('#CodigoTipoEndereco');
-    if(selTipo) {
-        var valToSelect = '';
-        for(var i=0; i<selTipo.options.length; i++) {
-            if(selTipo.options[i].value === tipoDefault) valToSelect = tipoDefault;
+
+    // O ESPIÃO DE MUNICÍPIO: Espera o ViaCEP terminar o AJAX
+    async function esperarViaCEP() {
+        var limite = 0;
+        while(limite < 30) {
+            var cid = document.getElementById('DescricaoCidade');
+            var blk = document.querySelector('.blockUI');
+            var isBlk = blk && blk.style.display !== 'none';
+            if(cid && cid.innerText.trim() !== '' && !isBlk) break;
+            await delay(500);
+            limite++;
         }
-        if(!valToSelect && selTipo.options.length>0) valToSelect = selTipo.options[1].value || selTipo.options[0].value;
-
-        selTipo.value = valToSelect; 
-        selTipo.dispatchEvent(new Event('change',{bubbles:true}));
-        var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
     }
-    await delay(1500); 
 
-    // O CEP: Se não tem CEP ou o ViaCEP falhou (município vazio), cai no fallback de emergência
     async function injetarCepEValidar(cepParaDigitar) {
         if(cf){ 
             cf.removeAttribute('disabled');
             cf.focus();
+            cf.value = ''; cf.dispatchEvent(new Event('input',{bubbles:true})); await delay(300);
             await new Promise(function(resolve){
                 if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cepParaDigitar, { delay:60, onDone: resolve });
                 else typeSlowly(cf, cepParaDigitar, 60).then(resolve);
@@ -503,19 +502,17 @@
             cf.dispatchEvent(new Event('blur',{bubbles:true}));
             var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
             
-            // O ViaCEP demora até 3 segundos pra responder e pisca a tela
-            await delay(1500);
-            await waitBlockUI(10000); 
-            await delay(1500);
+            await delay(1000);
+            await esperarViaCEP();
+            await delay(1000);
         }
     }
 
     if(cep) await injetarCepEValidar(cep);
 
-    // VALIDADOR SUPREMO DE MUNICÍPIO (A Guerra do ViaCEP)
     var municipioEl = document.getElementById('DescricaoCidade');
     if (!municipioEl || municipioEl.innerText.trim() === '') {
-        log('ViaCEP falhou ou CEP em branco. Acionando Fallback...', 'warn');
+        log('ViaCEP falhou ou CEP vazio. Acionando Fallback...', 'warn');
         var ufDoc = document.getElementById('UfSigla_Descricao');
         var ufTxt = ufDoc ? ufDoc.innerText.trim().toUpperCase() : '';
         
@@ -531,7 +528,20 @@
         await injetarCepEValidar(cepEmergencia);
     }
 
-    // Agora sim, com a tela calma, reescrevemos o Logradouro, Numero, etc.
+    var selTipo = getVisible('#CodigoTipoEndereco');
+    if(selTipo) {
+        var valToSelect = '';
+        for(var i=0; i<selTipo.options.length; i++) {
+            if(selTipo.options[i].value === tipoDefault) valToSelect = tipoDefault;
+        }
+        if(!valToSelect && selTipo.options.length>0) valToSelect = selTipo.options[1].value || selTipo.options[0].value;
+
+        selTipo.value = valToSelect; 
+        selTipo.dispatchEvent(new Event('change',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
+    }
+    await delay(500);
+
     var f = getVisible('#Logradouro'); 
     if(f){ 
         f.removeAttribute('disabled'); f.focus();
@@ -905,15 +915,36 @@
 
   async function fluxoInclusao(task){
     enviarStatus('running','Acessando Frota',{step:'inclusao'}); 
-    var transp=getTargetDoc(task);
+    var transp = getTargetDoc(task);
     
-    var btnCriar = document.querySelector('#btnCriarPedido') || document.querySelector('button[type="submit"]') || document.querySelector('.btn-primary');
-    var formAberto = document.querySelector('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
+    var formAberto = null;
+    var btnCriar = null;
+
+    for(var i=0; i<20; i++){
+        formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
+        if(formAberto) break;
+        
+        btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
+        if(btnCriar) break;
+        
+        await delay(500);
+    }
     
-    if(!formAberto && btnCriar) {
+    if(formAberto) { 
+        await processarVeiculos(task); 
+        return; 
+    }
+
+    if(btnCriar) {
         var sel = document.querySelector('select');
         if(sel) {
-            for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1||sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true})); break;}}
+            for(var i=0;i<sel.options.length;i++){
+                if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1 || sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){
+                    sel.value=sel.options[i].value;
+                    sel.dispatchEvent(new Event('change',{bubbles:true})); 
+                    break;
+                }
+            }
         }
         await delay(1000);
         salvarEstado('tarefa_pendente_navegacao', task);
@@ -931,11 +962,12 @@
         setTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
-    if (formAberto) { await processarVeiculos(task); }
+    
+    enviarStatus('error', 'Painel de frota nao carregou a tempo.');
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
+  // OS FLUXOS PRINCIPAIS
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
@@ -949,7 +981,8 @@
     if(idf){
         idf.removeAttribute('disabled');
         idf.focus();
-        var num = (d.identidade||d.cnh||'000000').replace(/\D/g,'');
+        var num = (d.identidade||d.cnh||'000000').replace(/[^0-9a-zA-Z]/g,'');
+        if(!num) num = '000000';
         await new Promise(function(resolve){
             if(U && U.digitarCharAChar) U.digitarCharAChar(idf, num, { delay:60, onDone: resolve });
             else typeSlowly(idf, num, 60).then(resolve);
@@ -970,8 +1003,10 @@
     if(d.uf){
         var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
         if(uf){
+            var targetUf = d.uf.replace(/[^A-Za-z]/g, '').toUpperCase();
             for(var i=0; i<uf.options.length; i++){
-                if(uf.options[i].value.toUpperCase() === d.uf.toUpperCase()){
+                if(uf.options[i].value.toUpperCase() === targetUf){
+                    uf.selectedIndex = i;
                     uf.value = uf.options[i].value;
                     uf.dispatchEvent(new Event('change',{bubbles:true}));
                     if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change');
