@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v9.0 (Cache Breaker Edition)
-// Multi-Target Selectors (TAC/ETC), Tab Transp Force Focus, Anti-Cache
+// bridge.js — Final Omega v9.1 (Sunshine Edition)
+// ViaCEP Waiter, Humanized Address, CPF Contacts Added, Anti-Cache
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -8,9 +8,6 @@
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
-  // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO NUCLEAR DE TOASTS
-  // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
       for(var i=0; i<els.length; i++) { if (els[i].offsetParent !== null) return els[i]; }
@@ -308,7 +305,6 @@
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
 
-      // VERIFICAÇÃO DO TERMO DE USO
       if (url.indexOf('Home/ExibirTermo') !== -1) {
           enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
           var chkTermo = document.getElementById('ckTermo');
@@ -501,6 +497,7 @@
     }
     await delay(1500); 
 
+    // DIGITAÇÃO DO CEP E ESPERA DO VIACEP
     if(cf){ 
         cf.removeAttribute('disabled');
         cf.focus();
@@ -510,22 +507,53 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        await delay(500);
+        
+        // Aguarda o AJAX do ViaCEP terminar antes de continuar digitando
+        await delay(1000);
         await waitBlockUI(10000); 
         await delay(1000);
     }
 
-    var f = getVisible('#Logradouro'); if(f){ f.value=d.logradouro||'0'; f.dispatchEvent(new Event('change',{bubbles:true})); }
-    var nf = getVisible('#Numero'); if(nf){ nf.value=d.numero||'0'; nf.dispatchEvent(new Event('change',{bubbles:true})); }
+    // DIGITAÇÃO HUMANIZADA DOS CAMPOS APÓS O VIACEP
+    var f = getVisible('#Logradouro'); 
+    if(f){ 
+        f.removeAttribute('disabled'); f.focus();
+        let val = d.logradouro || '0';
+        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(f, val, {delay:40, onDone:r}) : typeSlowly(f, val, 40).then(r));
+        f.dispatchEvent(new Event('blur',{bubbles:true})); 
+    }
+
+    var nf = getVisible('#Numero'); 
+    if(nf){ 
+        nf.removeAttribute('disabled'); nf.focus();
+        let val = d.numero || '0';
+        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(nf, val, {delay:40, onDone:r}) : typeSlowly(nf, val, 40).then(r));
+        nf.dispatchEvent(new Event('blur',{bubbles:true})); 
+    }
     
-    if(d.complemento) { var cf2=getVisible('#Complemento'); if(cf2) { cf2.value=d.complemento; cf2.dispatchEvent(new Event('change',{bubbles:true})); } }
-    var bf = getVisible('#Bairro'); if(bf){ bf.value=d.bairro||'0'; bf.dispatchEvent(new Event('change',{bubbles:true})); }
+    if(d.complemento) { 
+        var cf2 = getVisible('#Complemento'); 
+        if(cf2) { 
+            cf2.removeAttribute('disabled'); cf2.focus();
+            await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(cf2, d.complemento, {delay:40, onDone:r}) : typeSlowly(cf2, d.complemento, 40).then(r));
+            cf2.dispatchEvent(new Event('blur',{bubbles:true})); 
+        } 
+    }
+
+    var bf = getVisible('#Bairro'); 
+    if(bf){ 
+        bf.removeAttribute('disabled'); bf.focus();
+        let val = d.bairro || '0';
+        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(bf, val, {delay:40, onDone:r}) : typeSlowly(bf, val, 40).then(r));
+        bf.dispatchEvent(new Event('blur',{bubbles:true})); 
+    }
     
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
     if(me){ 
+        if(!me.checked) me.click();
         me.checked = true; 
         me.dispatchEvent(new Event('change',{bubbles:true})); 
-        var jq = unsafeWindow.jQuery; if(jq) { jq(me).trigger('change'); jq(me).iCheck('check'); }
+        var jq = unsafeWindow.jQuery; if(jq) { jq(me).trigger('change'); jq('.icheckbox_flat-blue input').iCheck('check'); }
     }
     await delay(1000);
 
@@ -831,7 +859,6 @@
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
-    // Força a aba Transportador estar ativa caso o navegador tenha salvo outra
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
     if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') {
         tabTransp.click();
@@ -865,14 +892,24 @@
     if(d.uf){
         var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
         if(uf){
-            uf.value=d.uf.toUpperCase();
-            uf.dispatchEvent(new Event('change',{bubbles:true}));
-            var jq = unsafeWindow.jQuery; if(jq) jq(uf).trigger('change');
+            for(var i=0; i<uf.options.length; i++){
+                if(uf.options[i].value.toUpperCase() === d.uf.toUpperCase()){
+                    uf.value = uf.options[i].value;
+                    uf.dispatchEvent(new Event('change',{bubbles:true}));
+                    if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change');
+                    break;
+                }
+            }
         }
     }
     await delay(1000);
 
-    await preencherEndereco(d, 'RES'); // Cadastro CPF usa 'RES' (Residencial)
+    await preencherEndereco(d, 'RES'); 
+    
+    // Contatos aleatórios para suprir a obrigação da ANTT no CPF
+    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
+    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
+    
     await processarVeiculos(task);
   }
 
