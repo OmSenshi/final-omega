@@ -1,17 +1,20 @@
-// bridge.js — Final Omega v11.1 (Sunshine Edition)
-// Fix: Fatal Bind Error, Race Condition U Restored, Ultimate Timer Killer
+// bridge.js — Final Omega v11.2 (Sunshine Edition)
+// Hotfix: Conexao Gov.br Restaurada (Polling Interval Fix)
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
+  var U = window.OmegaUtils || null;
 
-  // ISOLAMENTO SEGURO (Evita o Illegal Invocation do Tampermonkey)
+  // ISOLAMENTO SEGURO E COMPLETO
   var nativeSetTimeout = window.setTimeout;
   var nativeClearTimeout = window.clearTimeout;
+  var nativeSetInterval = window.setInterval;
   var nativeClearInterval = window.clearInterval;
 
   if (typeof unsafeWindow !== 'undefined' && unsafeWindow.setTimeout) {
       nativeSetTimeout = function(fn, ms) { return unsafeWindow.setTimeout(fn, ms); };
       nativeClearTimeout = function(id) { return unsafeWindow.clearTimeout(id); };
+      nativeSetInterval = function(fn, ms) { return unsafeWindow.setInterval(fn, ms); };
       nativeClearInterval = function(id) { return unsafeWindow.clearInterval(id); };
   }
 
@@ -46,7 +49,7 @@
       if (el) return resolve(el);
       var obs = new MutationObserver(function() {
         el = document.querySelector(selector);
-        if (el) { obs.disconnect(); clearTimeout(t); resolve(el); }
+        if (el) { obs.disconnect(); nativeClearTimeout(t); resolve(el); }
       });
       obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
       var t = nativeSetTimeout(function() { obs.disconnect(); reject(new Error('Timeout: ' + selector)); }, timeout);
@@ -167,11 +170,10 @@
   }
   if (typeof unsafeWindow !== 'undefined') unsafeWindow.OmegaParar = paradaDeEmergencia;
 
-  // ── INIT DA ANTT COM CÃO DE GUARDA CONTRA RACE CONDITION ──
   if(isANTT){
     function initInterfaceANTT() {
         var U = window.OmegaUtils || null;
-        if (!U) { nativeSetTimeout(initInterfaceANTT, 300); return; } // Espera o core.js carregar
+        if (!U) { nativeSetTimeout(initInterfaceANTT, 300); return; } 
 
         U.registrarAba('bridge','Bridge',''
           +'<div class="om-section-title">Conexao VPS</div>'
@@ -199,7 +201,6 @@
     initInterfaceANTT();
   }
 
-  // ── INIT DO GOV.BR (Mini-Bridge Standalone) ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent='#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}#omega-gov-panel .og-row{margin-bottom:6px}#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
@@ -226,6 +227,7 @@
       if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
       if(govPollInterval) nativeClearInterval(govPollInterval);
       var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
+      
       function fazerPoll() {
           if(paused||!VPS_URL)return;
           GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
@@ -233,7 +235,8 @@
               onerror: function() { connected=false; atualizarGovStatus('Erro de Conexao','err'); }
           });
       }
-      fazerPoll(); govPollInterval = nativeSetTimeout(fazerPoll, 3000);
+      fazerPoll(); 
+      govPollInterval = nativeSetInterval(fazerPoll, 3000); // 🔄 CORREÇÃO: O looping continuo foi restaurado
     }
 
     var _enviarStatusOriginal=enviarStatus;
@@ -287,6 +290,23 @@
       log('Processando Fluxo: ' + task.modo, 'ok');
 
       await delay(2000);
+
+      if (url.indexOf('Home/ExibirTermo') !== -1) {
+          enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
+          var chkTermo = document.getElementById('ckTermo');
+          if (chkTermo) {
+              var jq = unsafeWindow.jQuery; 
+              if (jq) { jq(chkTermo).iCheck('check'); jq(chkTermo).prop('checked', true).trigger('change'); } 
+              else { chkTermo.checked = true; chkTermo.dispatchEvent(new Event('change',{bubbles:true})); }
+              await delay(1000);
+              var btnProsseguir = document.getElementById('bAssinarTermo');
+              if (btnProsseguir) {
+                  salvarEstado('tarefa_pendente_navegacao', task);
+                  btnProsseguir.click();
+                  return; 
+              }
+          }
+      }
 
       if (url.indexOf('Transportador/Cadastro') !== -1 || url.indexOf('Pedido/Criar') !== -1 || url.indexOf('NovoCadastro') !== -1) {
           if (!document.getElementById('Identidade') && !document.getElementById('TransportadorTac_Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
