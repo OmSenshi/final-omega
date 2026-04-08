@@ -1,4 +1,4 @@
-// src/whatsapp/bot.js — Final Omega v6.1: WhatsApp Maestro (Ultimate Parser)
+// src/whatsapp/bot.js — Final Omega v6.2: WhatsApp Maestro (Anti-Asterisk Supreme)
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -17,89 +17,21 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 
 [SESSION_DIR, IMPORT_DIR, DOWNLOAD_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
-const TEMPLATE_CADCPF =
-  '[OMEGA CADASTRO CPF]\n' +
-  '*👤 Login:* \n' +
-  '*🔑 Senha:* \n' +
-  '*🆔 RG:* \n' +
-  '*📍 UF:* \n' +
-  '*📮 CEP:* \n' +
-  '*🏠 Logradouro:* \n' +
-  '*🔢 Numero:* \n' +
-  '*🏢 Complemento:* \n' +
-  '*🏘️ Bairro:* \n' +
-  '-- VEICULO --\n' +
-  '*⚙️ Tipo Veiculo (Proprio/Terceiro/Nao):* \n' +
-  '*🔢 Placa:* \n' +
-  '*📄 Renavam:* \n' +
-  '*👤 CPF/CNPJ Arrendante:* \n' +
-  '*📛 Nome Arrendante:* \n' +
-  '\n_Preencha todos os campos. Sem valor = deixe vazio._\n' +
-  '_Tipo Veiculo: Proprio, Terceiro ou Nao._\n' +
-  '_Login = CPF da Conta-Gov._';
+const TEMPLATE_CADCPF = '[OMEGA CADASTRO CPF]\n*👤 Login:* \n*🔑 Senha:* \n*🆔 RG:* \n*📍 UF:* \n*📮 CEP:* \n*🏠 Logradouro:* \n*🔢 Numero:* \n*🏢 Complemento:* \n*🏘️ Bairro:* \n-- VEICULO --\n*⚙️ Tipo Veiculo (Proprio/Terceiro/Nao):* \n*🔢 Placa:* \n*📄 Renavam:* \n*👤 CPF/CNPJ Arrendante:* \n*📛 Nome Arrendante:* \n\n_Preencha todos os campos. Sem valor = deixe vazio._\n_Tipo Veiculo: Proprio, Terceiro ou Nao._\n_Login = CPF da Conta-Gov._';
+const TEMPLATE_CADCNPJ = '[OMEGA CADASTRO CNPJ]\n*👤 Login (colaborador):* \n*🔑 Senha:* \n*🏢 CNPJ:* \n*📮 CEP:* \n*🏠 Logradouro:* \n*🔢 Numero:* \n*🏘️ Bairro:* \n*📞 Telefone:* \n*📧 Email:* \n*👤 CPF Socio:* \n-- VEICULO --\n*⚙️ Tipo Veiculo (Proprio/Terceiro/Nao):* \n*🔢 Placa:* \n*📄 Renavam:* \n*👤 CPF/CNPJ Arrendante:* \n*📛 Nome Arrendante:* \n\n_Login = CPF do colaborador (Conta-Gov)._\n_CNPJ = empresa a cadastrar._';
+const TEMPLATE_INCLUSAO = '[OMEGA INCLUSAO]\n*👤 Login:* \n*🔑 Senha:* \n*🚛 Transportador (CPF/CNPJ):* \n-- VEICULO --\n*⚙️ Tipo Veiculo (Proprio/Terceiro):* \n*🔢 Placa:* \n*📄 Renavam:* \n*👤 CPF/CNPJ Arrendante:* \n*📛 Nome Arrendante:* \n\n_Transportador = CPF ou CNPJ._\n_Se Terceiro: arrendamento automatico antes da inclusao._';
+const TEMPLATE_ARRENDAMENTO = '[OMEGA ARRENDAMENTO AVULSO]\n*👤 Login:* \n*🔑 Senha:* \n*🔢 Placa:* \n*📄 Renavam:* \n*👤 CPF/CNPJ Arrendante:* \n*📛 Nome Arrendante:* \n*👤 CPF/CNPJ Arrendatario:* \n*📛 Nome Arrendatario:* \n\n_Arrendamento avulso (sem cadastro)._\n_Login = CPF da Conta-Gov._';
 
-const TEMPLATE_CADCNPJ =
-  '[OMEGA CADASTRO CNPJ]\n' +
-  '*👤 Login (colaborador):* \n' +
-  '*🔑 Senha:* \n' +
-  '*🏢 CNPJ:* \n' +
-  '*📮 CEP:* \n' +
-  '*🏠 Logradouro:* \n' +
-  '*🔢 Numero:* \n' +
-  '*🏘️ Bairro:* \n' +
-  '*📞 Telefone:* \n' +
-  '*📧 Email:* \n' +
-  '*👤 CPF Socio:* \n' +
-  '-- VEICULO --\n' +
-  '*⚙️ Tipo Veiculo (Proprio/Terceiro/Nao):* \n' +
-  '*🔢 Placa:* \n' +
-  '*📄 Renavam:* \n' +
-  '*👤 CPF/CNPJ Arrendante:* \n' +
-  '*📛 Nome Arrendante:* \n' +
-  '\n_Login = CPF do colaborador (Conta-Gov)._\n' +
-  '_CNPJ = empresa a cadastrar._';
+const TEMPLATES_MAP = { '!cadcpf': TEMPLATE_CADCPF, '!cadcnpj': TEMPLATE_CADCNPJ, '!inclusao': TEMPLATE_INCLUSAO, '!arrendamento': TEMPLATE_ARRENDAMENTO };
 
-const TEMPLATE_INCLUSAO =
-  '[OMEGA INCLUSAO]\n' +
-  '*👤 Login:* \n' +
-  '*🔑 Senha:* \n' +
-  '*🚛 Transportador (CPF/CNPJ):* \n' +
-  '-- VEICULO --\n' +
-  '*⚙️ Tipo Veiculo (Proprio/Terceiro):* \n' +
-  '*🔢 Placa:* \n' +
-  '*📄 Renavam:* \n' +
-  '*👤 CPF/CNPJ Arrendante:* \n' +
-  '*📛 Nome Arrendante:* \n' +
-  '\n_Transportador = CPF ou CNPJ._\n' +
-  '_Se Terceiro: arrendamento automatico antes da inclusao._';
-
-const TEMPLATE_ARRENDAMENTO =
-  '[OMEGA ARRENDAMENTO AVULSO]\n' +
-  '*👤 Login:* \n' +
-  '*🔑 Senha:* \n' +
-  '*🔢 Placa:* \n' +
-  '*📄 Renavam:* \n' +
-  '*👤 CPF/CNPJ Arrendante:* \n' +
-  '*📛 Nome Arrendante:* \n' +
-  '*👤 CPF/CNPJ Arrendatario:* \n' +
-  '*📛 Nome Arrendatario:* \n' +
-  '\n_Arrendamento avulso (sem cadastro)._\n' +
-  '_Login = CPF da Conta-Gov._';
-
-const TEMPLATES_MAP = {
-  '!cadcpf': TEMPLATE_CADCPF,
-  '!cadcnpj': TEMPLATE_CADCNPJ,
-  '!inclusao': TEMPLATE_INCLUSAO,
-  '!arrendamento': TEMPLATE_ARRENDAMENTO
-};
-
+// DESTRUIDOR DE ASTERISCOS E EMOJIS
 function extractByPrefix(lines, prefix) {
   for (let line of lines) {
-      // REGEX SUPREMO: Remove TUDO que não for letra ou número no começo da linha
-      let cleanLine = line.replace(/^[^\w]+/g, '').trim(); 
+      let noAst = line.replace(/\*/g, '').trim(); // Elimina TODOS os asteriscos
+      let cleanLine = noAst.replace(/^[^a-zA-Z0-9]+/g, ''); // Elimina emojis do inicio
       if (cleanLine.toLowerCase().startsWith(prefix.toLowerCase())) {
           let val = cleanLine.substring(prefix.length).trim();
-          val = val.replace(/^[:\-]\s*/, '').trim(); 
+          val = val.replace(/^[:\-]\s*/, '').trim(); // Limpa dois pontos e espacos
           return val;
       }
   }
@@ -119,10 +51,7 @@ function parseFilledTemplate(body) {
   const transpLines = (parts[0] || '').split('\n');
   const blocosVeiculos = parts.slice(1);
 
-  const credenciais = {
-      cpf: extractByPrefix(transpLines, 'Login'),
-      senha: extractByPrefix(transpLines, 'Senha')
-  };
+  const credenciais = { cpf: extractByPrefix(transpLines, 'Login'), senha: extractByPrefix(transpLines, 'Senha') };
 
   const veiculos = blocosVeiculos.map(bloco => {
     const vLines = bloco.split('\n');
@@ -137,53 +66,30 @@ function parseFilledTemplate(body) {
 
   switch(modo) {
     case 'cadcpf': return {
-      modo: 'cadcpf',
-      credenciais: credenciais,
+      modo: 'cadcpf', credenciais: credenciais,
       transportador: {
-        identidade: extractByPrefix(transpLines, 'RG'),
-        uf: extractByPrefix(transpLines, 'UF'),
-        cep: extractByPrefix(transpLines, 'CEP'),
-        logradouro: extractByPrefix(transpLines, 'Logradouro'),
-        numero: extractByPrefix(transpLines, 'Numero'),
-        complemento: extractByPrefix(transpLines, 'Complemento'),
+        identidade: extractByPrefix(transpLines, 'RG'), uf: extractByPrefix(transpLines, 'UF'),
+        cep: extractByPrefix(transpLines, 'CEP'), logradouro: extractByPrefix(transpLines, 'Logradouro'),
+        numero: extractByPrefix(transpLines, 'Numero'), complemento: extractByPrefix(transpLines, 'Complemento'),
         bairro: extractByPrefix(transpLines, 'Bairro')
-      },
-      veiculos: veiculos
+      }, veiculos: veiculos
     };
     case 'cadcnpj': return {
-      modo: 'cadcnpj',
-      credenciais: credenciais,
-      cnpj_data: { 
-          cnpj: extractByPrefix(transpLines, 'CNPJ'), 
-          cpf_socio: extractByPrefix(transpLines, 'CPF Socio') 
-      },
+      modo: 'cadcnpj', credenciais: credenciais,
+      cnpj_data: { cnpj: extractByPrefix(transpLines, 'CNPJ'), cpf_socio: extractByPrefix(transpLines, 'CPF Socio') },
       transportador: {
-        cep: extractByPrefix(transpLines, 'CEP'),
-        logradouro: extractByPrefix(transpLines, 'Logradouro'),
-        numero: extractByPrefix(transpLines, 'Numero'),
-        complemento: extractByPrefix(transpLines, 'Complemento'),
-        bairro: extractByPrefix(transpLines, 'Bairro'),
-        telefone: extractByPrefix(transpLines, 'Telefone'),
-        email: extractByPrefix(transpLines, 'Email')
-      },
-      veiculos: veiculos
+        cep: extractByPrefix(transpLines, 'CEP'), logradouro: extractByPrefix(transpLines, 'Logradouro'),
+        numero: extractByPrefix(transpLines, 'Numero'), complemento: extractByPrefix(transpLines, 'Complemento'),
+        bairro: extractByPrefix(transpLines, 'Bairro'), telefone: extractByPrefix(transpLines, 'Telefone'), email: extractByPrefix(transpLines, 'Email')
+      }, veiculos: veiculos
     };
-    case 'inclusao': return {
-      modo: 'inclusao',
-      credenciais: credenciais,
-      transportador: extractByPrefix(transpLines, 'Transportador'),
-      veiculos: veiculos
-    };
+    case 'inclusao': return { modo: 'inclusao', credenciais: credenciais, transportador: extractByPrefix(transpLines, 'Transportador'), veiculos: veiculos };
     case 'arrendamento': return {
-      modo: 'arrendamento',
-      credenciais: credenciais,
+      modo: 'arrendamento', credenciais: credenciais,
       arrendamento: {
-        placa: extractByPrefix(transpLines, 'Placa'),
-        renavam: extractByPrefix(transpLines, 'Renavam'),
-        cpf_arrendante: extractByPrefix(transpLines, 'CPF/CNPJ Arrendante'),
-        nome_arrendante: extractByPrefix(transpLines, 'Nome Arrendante'),
-        cpf_arrendatario: extractByPrefix(transpLines, 'CPF/CNPJ Arrendatario'),
-        nome_arrendatario: extractByPrefix(transpLines, 'Nome Arrendatario')
+        placa: extractByPrefix(transpLines, 'Placa'), renavam: extractByPrefix(transpLines, 'Renavam'),
+        cpf_arrendante: extractByPrefix(transpLines, 'CPF/CNPJ Arrendante'), nome_arrendante: extractByPrefix(transpLines, 'Nome Arrendante'),
+        cpf_arrendatario: extractByPrefix(transpLines, 'CPF/CNPJ Arrendatario'), nome_arrendatario: extractByPrefix(transpLines, 'Nome Arrendatario')
       }
     };
   }
@@ -191,9 +97,7 @@ function parseFilledTemplate(body) {
 }
 
 async function enviarTarefa(task) {
-  try {
-    const r = await fetch(SERVER_URL + '/api/task/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session': AUTH_TOKEN }, body: JSON.stringify({ task }) });
-    return await r.json();
+  try { const r = await fetch(SERVER_URL + '/api/task/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session': AUTH_TOKEN }, body: JSON.stringify({ task }) }); return await r.json();
   } catch(e) { return { success: false, error: e.message }; }
 }
 
@@ -210,7 +114,7 @@ const client = new Client({ authStrategy: new LocalAuth({ dataPath: SESSION_DIR 
 let targetGroupId = null, botReady = false; const pendingDocs = new Map();
 
 client.on('qr', qr => { console.log('\n  ═══ ESCANEIE O QR CODE ═══'); qrcode.generate(qr, { small: true }); });
-client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v6.1 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
+client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v6.2 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
 client.on('auth_failure', msg => console.error('  ✗ Auth:', msg)); client.on('disconnected', reason => { console.log('  ✗ Desconectado:', reason); setTimeout(() => client.initialize(), 5000); });
 
 client.on('message_create', async msg => {
@@ -225,8 +129,8 @@ client.on('message_create', async msg => {
     }
     const text = (msg.body || '').trim(); const textLow = text.toLowerCase();
     if (TEMPLATES_MAP[textLow]) { await msg.reply(TEMPLATES_MAP[textLow]); return; }
-    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v6.1 (Sunshine)*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
-    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 6.1 (Sunshine Edition)'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
+    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v6.2 (Sunshine)*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
+    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 6.2 (Sunshine Edition)'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
     if (text.toUpperCase().startsWith('[OMEGA')) {
       const task = parseFilledTemplate(text); if (!task) { await msg.reply('❌ Formato invalido. Use !cadcpf pra ver o modelo.'); return; }
       let resumo = '📋 *Tarefa detectada:* ' + task.modo.toUpperCase() + '\n';
@@ -243,6 +147,5 @@ async function sendFileToGroup(filepath, caption) { if (!botReady || !targetGrou
 async function sendError(message, step) { return sendToGroup('⚠️ *Erro*\nEtapa: ' + (step||'?') + '\n' + message); }
 async function sendBloqueio(detalhes) { const msg = '❌ *BLOQUEIO DE PEDIDO DETECTADO*\nO cliente esta com pedido aberto em outro ponto.\n\n📋 *DETALHES:*\n🗓️ *Data/Hora:* ' + (detalhes.dataHora || '?') + '\n🔄 *Situacao:* ' + (detalhes.situacao || '?') + '\n👤 *Usuario:* ' + (detalhes.usuario || '?') + '\n📛 *Nome:* ' + (detalhes.nome || '?') + '\n🏢 *Entidade:* ' + (detalhes.entidade || '?') + '\n\n⚠️ *ACAO NECESSARIA:* Solicite o fechamento do pedido.'; return sendToGroup(msg); }
 async function sendDocuments() { const c = path.join(DOWNLOAD_DIR, 'Carteirinha.pdf'); const e = path.join(DOWNLOAD_DIR, 'Extrato.pdf'); if (fs.existsSync(c)) await sendFileToGroup(c, '✅ Carteirinha RNTRC'); if (fs.existsSync(e)) await sendFileToGroup(e, '✅ Extrato RNTRC'); }
-function startBot() { console.log('\n  Omega WhatsApp Bot v6.1 (Sunshine)'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
-
+function startBot() { console.log('\n  Omega WhatsApp Bot v6.2 (Sunshine)'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
 module.exports = { startBot, sendToGroup, sendFileToGroup, sendError, sendBloqueio, sendDocuments };
