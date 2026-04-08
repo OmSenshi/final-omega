@@ -1,5 +1,4 @@
-// src/whatsapp/bot.js — Final Omega v5.2: WhatsApp Maestro (Sunshine Edition)
-// Anti-Asterisk Parser, Strict Formats, Robust Veiculo Regex
+// src/whatsapp/bot.js — Final Omega v6.0: WhatsApp Maestro (Strict Parser)
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -19,7 +18,7 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 [SESSION_DIR, IMPORT_DIR, DOWNLOAD_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
 // ═══════════════════════════════════════════════════════════════
-// TEMPLATES (Exatos conforme solicitação)
+// TEMPLATES (Exatos)
 // ═══════════════════════════════════════════════════════════════
 
 const TEMPLATE_CADCPF =
@@ -99,8 +98,22 @@ const TEMPLATES_MAP = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// PARSER INTELIGENTE (Limpeza de Asteriscos)
+// PARSER EXATO (LINHA POR LINHA - À Prova de Falhas)
 // ═══════════════════════════════════════════════════════════════
+
+function extractByPrefix(lines, prefix) {
+  for (let line of lines) {
+      let cleanLine = line.replace(/\*/g, '').trim();
+      // Remove emojis do começo da linha
+      cleanLine = cleanLine.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{2B50}\u{200B}-\u{200D}]+\s*/u, '');
+      if (cleanLine.toLowerCase().startsWith(prefix.toLowerCase())) {
+          let val = cleanLine.substring(prefix.length).trim();
+          val = val.replace(/^[:\-]\s*/, '').trim(); 
+          return val;
+      }
+  }
+  return '';
+}
 
 function parseFilledTemplate(body) {
   const headerLine = body.split('\n')[0].trim().toUpperCase();
@@ -112,28 +125,22 @@ function parseFilledTemplate(body) {
   if (!modo) return null;
 
   const parts = body.split(/--\s*VEICULO\s*--/i);
-  const blocoTransp = parts[0] || '';
+  const transpLines = (parts[0] || '').split('\n');
   const blocosVeiculos = parts.slice(1);
 
-  // Extrator mestre: Remove os asteriscos antes de buscar o regex!
-  const extract = (texto, regex) => {
-    const cleanText = texto.replace(/\*/g, ''); 
-    const match = cleanText.match(regex);
-    return match && match[1] && match[1].trim() !== '' ? match[1].trim() : '';
-  };
-
   const credenciais = {
-      cpf: extract(blocoTransp, /Login.*?:?\s*([\d\.\-\/]+)/i),
-      senha: extract(blocoTransp, /Senha.*?:?\s*([^\n]+)/i)
+      cpf: extractByPrefix(transpLines, 'Login'),
+      senha: extractByPrefix(transpLines, 'Senha')
   };
 
   const veiculos = blocosVeiculos.map(bloco => {
+    const vLines = bloco.split('\n');
     return {
-      tipo_veiculo: extract(bloco, /Tipo Veiculo.*?:\s*(Proprio|Terceiro|Nao)/i) || 'proprio',
-      placa: extract(bloco, /Placa:\s*([A-Za-z0-9\-]+)/i),
-      renavam: extract(bloco, /Renavam:\s*([\d]+)/i),
-      cpf_arrendante: extract(bloco, /Arrendante.*?:?\s*([\d\.\-\/]+)/i),
-      nome_arrendante: extract(bloco, /Nome Arrendante.*?:?\s*([^\n]+)/i)
+      tipo_veiculo: extractByPrefix(vLines, 'Tipo Veiculo') || 'Proprio',
+      placa: extractByPrefix(vLines, 'Placa'),
+      renavam: extractByPrefix(vLines, 'Renavam'),
+      cpf_arrendante: extractByPrefix(vLines, 'CPF/CNPJ Arrendante') || extractByPrefix(vLines, 'CPF Arrendante'),
+      nome_arrendante: extractByPrefix(vLines, 'Nome Arrendante')
     };
   }).filter(v => v.placa);
 
@@ -142,13 +149,13 @@ function parseFilledTemplate(body) {
       modo: 'cadcpf',
       credenciais: credenciais,
       transportador: {
-        identidade: extract(blocoTransp, /RG:\s*([^\n]+)/i),
-        uf: extract(blocoTransp, /UF:\s*([A-Za-z]{2})/i),
-        cep: extract(blocoTransp, /CEP:\s*([\d\.\-]+)/i),
-        logradouro: extract(blocoTransp, /Logradouro:\s*([^\n]+)/i),
-        numero: extract(blocoTransp, /Numero:\s*([^\n]+)/i),
-        complemento: extract(blocoTransp, /Complemento:\s*([^\n]+)/i),
-        bairro: extract(blocoTransp, /Bairro:\s*([^\n]+)/i)
+        identidade: extractByPrefix(transpLines, 'RG'),
+        uf: extractByPrefix(transpLines, 'UF'),
+        cep: extractByPrefix(transpLines, 'CEP'),
+        logradouro: extractByPrefix(transpLines, 'Logradouro'),
+        numero: extractByPrefix(transpLines, 'Numero'),
+        complemento: extractByPrefix(transpLines, 'Complemento'),
+        bairro: extractByPrefix(transpLines, 'Bairro')
       },
       veiculos: veiculos
     };
@@ -156,36 +163,36 @@ function parseFilledTemplate(body) {
       modo: 'cadcnpj',
       credenciais: credenciais,
       cnpj_data: { 
-          cnpj: extract(blocoTransp, /CNPJ:\s*([\d\.\-\/]+)/i), 
-          cpf_socio: extract(blocoTransp, /CPF Socio:\s*([\d\.\-]+)/i) 
+          cnpj: extractByPrefix(transpLines, 'CNPJ'), 
+          cpf_socio: extractByPrefix(transpLines, 'CPF Socio') 
       },
       transportador: {
-        cep: extract(blocoTransp, /CEP:\s*([\d\.\-]+)/i),
-        logradouro: extract(blocoTransp, /Logradouro:\s*([^\n]+)/i),
-        numero: extract(blocoTransp, /Numero:\s*([^\n]+)/i),
-        complemento: extract(blocoTransp, /Complemento:\s*([^\n]+)/i),
-        bairro: extract(blocoTransp, /Bairro:\s*([^\n]+)/i),
-        telefone: extract(blocoTransp, /Telefone:\s*([^\n]+)/i),
-        email: extract(blocoTransp, /Email:\s*([^\n]+)/i)
+        cep: extractByPrefix(transpLines, 'CEP'),
+        logradouro: extractByPrefix(transpLines, 'Logradouro'),
+        numero: extractByPrefix(transpLines, 'Numero'),
+        complemento: extractByPrefix(transpLines, 'Complemento'),
+        bairro: extractByPrefix(transpLines, 'Bairro'),
+        telefone: extractByPrefix(transpLines, 'Telefone'),
+        email: extractByPrefix(transpLines, 'Email')
       },
       veiculos: veiculos
     };
     case 'inclusao': return {
       modo: 'inclusao',
       credenciais: credenciais,
-      transportador: extract(blocoTransp, /Transportador.*?:?\s*([\d\.\-\/]+)/i),
+      transportador: extractByPrefix(transpLines, 'Transportador (CPF/CNPJ)'),
       veiculos: veiculos
     };
     case 'arrendamento': return {
       modo: 'arrendamento',
       credenciais: credenciais,
       arrendamento: {
-        placa: extract(blocoTransp, /Placa:\s*([A-Za-z0-9\-]+)/i),
-        renavam: extract(blocoTransp, /Renavam:\s*([\d]+)/i),
-        cpf_arrendante: extract(blocoTransp, /Arrendante.*?:?\s*([\d\.\-\/]+)/i),
-        nome_arrendante: extract(blocoTransp, /Nome Arrendante.*?:?\s*([^\n]+)/i),
-        cpf_arrendatario: extract(blocoTransp, /Arrendatario.*?:?\s*([\d\.\-\/]+)/i),
-        nome_arrendatario: extract(blocoTransp, /Nome Arrendatario.*?:?\s*([^\n]+)/i)
+        placa: extractByPrefix(transpLines, 'Placa'),
+        renavam: extractByPrefix(transpLines, 'Renavam'),
+        cpf_arrendante: extractByPrefix(transpLines, 'CPF/CNPJ Arrendante'),
+        nome_arrendante: extractByPrefix(transpLines, 'Nome Arrendante'),
+        cpf_arrendatario: extractByPrefix(transpLines, 'CPF/CNPJ Arrendatario'),
+        nome_arrendatario: extractByPrefix(transpLines, 'Nome Arrendatario')
       }
     };
   }
@@ -247,7 +254,7 @@ const pendingDocs = new Map();
 
 client.on('qr', qr => { console.log('\n  ═══ ESCANEIE O QR CODE ═══'); qrcode.generate(qr, { small: true }); });
 client.on('ready', async () => {
-  console.log('  ✓ WhatsApp Bot v5.2 conectado!');
+  console.log('  ✓ WhatsApp Bot v6.0 conectado!');
   const chats = await client.getChats();
   const group = chats.find(c => c.isGroup && c.name === GROUP_NAME);
   if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); }
@@ -300,7 +307,7 @@ client.on('message_create', async msg => {
 
     if (textLow === '/ajuda' || textLow === '/help') {
       await msg.reply(
-        '*Omega Bot v5.2 (Sunshine)*\n\n' +
+        '*Omega Bot v6.0 (Sunshine)*\n\n' +
         '📋 *Comandos:*\n' +
         '!cadcpf — Cadastro CPF\n' +
         '!cadcnpj — Cadastro CNPJ\n' +
@@ -322,7 +329,7 @@ client.on('message_create', async msg => {
         let txt = '*[STATUS OMEGA]*\n\n';
         txt += '📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n';
         txt += '⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n';
-        txt += '🤖 *Versao:* 5.2 (Sunshine Edition)';
+        txt += '🤖 *Versao:* 6.0 (Sunshine Edition)';
         await msg.reply(txt);
       } catch(e) { await msg.reply('📊 Erro ao consultar.'); }
       return;
@@ -333,6 +340,11 @@ client.on('message_create', async msg => {
       if (!task) { await msg.reply('❌ Formato invalido. Use !cadcpf pra ver o modelo.'); return; }
 
       let resumo = '📋 *Tarefa detectada:* ' + task.modo.toUpperCase() + '\n';
+      
+      // LOG DE SEGURANÇA NO GRUPO
+      if (task.modo === 'cadcnpj' && task.cnpj_data) resumo += '🏢 *Alvo CNPJ:* ' + task.cnpj_data.cnpj + '\n';
+      else if (task.modo === 'arrendamento' && task.arrendamento) resumo += '🏢 *Alvo Arrendatario:* ' + task.arrendamento.cpf_arrendatario + '\n';
+      
       if (task.veiculos && task.veiculos.length > 0) {
         resumo += '🚗 *Veiculos:* ' + task.veiculos.length + ' (' + task.veiculos.map(v => v.placa).join(', ') + ')\n';
       }
@@ -405,7 +417,7 @@ async function sendDocuments() {
 }
 
 function startBot() {
-  console.log('\n  Omega WhatsApp Bot v5.2 (Sunshine)');
+  console.log('\n  Omega WhatsApp Bot v6.0 (Sunshine)');
   console.log('  Grupo: ' + GROUP_NAME);
   client.initialize();
 }
