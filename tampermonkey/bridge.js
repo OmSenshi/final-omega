@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v8.1 (Sunshine Edition)
-// Ultimate Sync, Toast Annihilator, COM Dropdown, Local API
+// bridge.js — Final Omega v8.2 (Sunshine Edition)
+// Dynamic Address Dropdown, Nuclear Toast Sweeper, CPF/CNPJ Sync
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -9,7 +9,7 @@
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO DE TOASTS
+  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO NUCLEAR DE TOASTS
   // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -74,18 +74,13 @@
 
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-  // NOVA LÓGICA DE ANIQUILAÇÃO DE TOASTS (Sem acionar o reload da ANTT)
+  // O ANIQUILADOR NUCLEAR DE TOASTS (Remove direto do HTML)
   function limparToasts() {
-      var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-      // Desarma a bomba-relógio do Toastr
-      if (w.toastr && w.toastr.options) {
-          w.toastr.options.onHidden = null;
-          w.toastr.options.onCloseClick = null;
-          w.toastr.clear();
-      }
-      // Arranca do DOM na força bruta
       var tc = document.getElementById('toast-container');
       if (tc) { tc.innerHTML = ''; tc.remove(); }
+      document.querySelectorAll('.toast, .toast-success, .toast-error').forEach(function(t) {
+          t.remove();
+      });
   }
 
   function typeSlowly(el, text, ms) {
@@ -252,6 +247,7 @@
     executarFluxo(msg);
   }
 
+  // PORTA DE ENTRADA PARA O PAINEL MANUAL
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
@@ -461,7 +457,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (A RESPIRAÇÃO DOS MODAIS E DROPDOWN)
+  // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d){
@@ -477,11 +473,18 @@
     
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
-        selTipo.value = 'COM'; 
+        var valToSelect = '';
+        for(var i=0; i<selTipo.options.length; i++) {
+            if(selTipo.options[i].value === 'COM') valToSelect = 'COM';
+            else if(selTipo.options[i].value === 'RES' && valToSelect !== 'COM') valToSelect = 'RES';
+        }
+        if(!valToSelect && selTipo.options.length>0) valToSelect = selTipo.options[1].value || selTipo.options[0].value;
+
+        selTipo.value = valToSelect; 
         selTipo.dispatchEvent(new Event('change',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
     }
-    await delay(1000); 
+    await delay(1500); 
 
     if(cf){ 
         cf.removeAttribute('disabled');
@@ -492,13 +495,15 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        await delay(2500); 
+        await delay(500);
+        await waitBlockUI(10000); 
+        await delay(1000);
     }
 
     var f = getVisible('#Logradouro'); if(f){ f.value=d.logradouro||'0'; f.dispatchEvent(new Event('change',{bubbles:true})); }
     var nf = getVisible('#Numero'); if(nf){ nf.value=d.numero||'0'; nf.dispatchEvent(new Event('change',{bubbles:true})); }
     
-    if(d.complemento) { var cf2=getVisible('#Complemento'); if(cf2) cf2.value=d.complemento; }
+    if(d.complemento) { var cf2=getVisible('#Complemento'); if(cf2) { cf2.value=d.complemento; cf2.dispatchEvent(new Event('change',{bubbles:true})); } }
     var bf = getVisible('#Bairro'); if(bf){ bf.value=d.bairro||'0'; bf.dispatchEvent(new Event('change',{bubbles:true})); }
     
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
@@ -507,7 +512,7 @@
         me.dispatchEvent(new Event('change',{bubbles:true})); 
         var jq = unsafeWindow.jQuery; if(jq) { jq(me).trigger('change'); jq(me).iCheck('check'); }
     }
-    await delay(500);
+    await delay(1000);
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
@@ -810,10 +815,42 @@
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
-    var idf=document.getElementById('Identidade');if(idf){idf.value=d.identidade||d.cnh||'000000';idf.dispatchEvent(new Event('change',{bubbles:true}));}
-    try{document.querySelector('#OrgaoEmissor').value='SSP';document.querySelector('#OrgaoEmissor').dispatchEvent(new Event('change',{bubbles:true}));}catch(e){}
-    if(d.uf){try{var uf=document.querySelector('#UfIdentidade');if(uf){uf.value=d.uf.toUpperCase();uf.dispatchEvent(new Event('change',{bubbles:true}));}}catch(e){}}
-    await preencherEndereco(d); await processarVeiculos(task);
+    
+    var idf = await waitForVisible('#Identidade', 10000);
+    await delay(1500); 
+
+    if(idf){
+        idf.removeAttribute('disabled');
+        idf.focus();
+        var num = (d.identidade||d.cnh||'000000').replace(/\D/g,'');
+        await new Promise(function(resolve){
+            if(U && U.digitarCharAChar) U.digitarCharAChar(idf, num, { delay:60, onDone: resolve });
+            else typeSlowly(idf, num, 60).then(resolve);
+        });
+        idf.dispatchEvent(new Event('blur',{bubbles:true}));
+    }
+    await delay(500);
+
+    var oe = getVisible('#OrgaoEmissor');
+    if(oe){
+        oe.value='SSP';
+        oe.dispatchEvent(new Event('change',{bubbles:true}));
+        if(unsafeWindow.jQuery) unsafeWindow.jQuery(oe).trigger('change');
+    }
+    await delay(500);
+
+    if(d.uf){
+        var uf = getVisible('#UfIdentidade');
+        if(uf){
+            uf.value=d.uf.toUpperCase();
+            uf.dispatchEvent(new Event('change',{bubbles:true}));
+            if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change');
+        }
+    }
+    await delay(1000);
+
+    await preencherEndereco(d); 
+    await processarVeiculos(task);
   }
 
   async function fluxoCadastroCNPJ(task){
