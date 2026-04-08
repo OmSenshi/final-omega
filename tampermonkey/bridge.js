@@ -1,19 +1,20 @@
-// bridge.js — Final Omega v11.0 (Sunshine Edition)
-// Ultimate Timer Killer, Stubborn Address, Sequential Modals, Emergency Stop
+// bridge.js — Final Omega v11.1 (Sunshine Edition)
+// Fix: Fatal Bind Error, Race Condition U Restored, Ultimate Timer Killer
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
-  var U = window.OmegaUtils || null;
 
-  // ISOLAMENTO DO SETTIMEOUT NATIVO PARA NÃO MATAR NOSSA AUTOMAÇÃO
+  // ISOLAMENTO SEGURO (Evita o Illegal Invocation do Tampermonkey)
   var nativeSetTimeout = window.setTimeout;
   var nativeClearTimeout = window.clearTimeout;
   var nativeClearInterval = window.clearInterval;
+
   if (typeof unsafeWindow !== 'undefined' && unsafeWindow.setTimeout) {
-      nativeSetTimeout = unsafeWindow.setTimeout.bind(unsafeWindow);
-      nativeClearTimeout = unsafeWindow.clearTimeout.bind(unsafeWindow);
-      nativeClearInterval = unsafeWindow.clearInterval.bind(unsafeWindow);
+      nativeSetTimeout = function(fn, ms) { return unsafeWindow.setTimeout(fn, ms); };
+      nativeClearTimeout = function(id) { return unsafeWindow.clearTimeout(id); };
+      nativeClearInterval = function(id) { return unsafeWindow.clearInterval(id); };
   }
+
   function delay(ms) { return new Promise(function(r) { nativeSetTimeout(r, ms); }); }
 
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
@@ -38,6 +39,35 @@
       });
   }
 
+  function waitForElement(selector, timeout) {
+    timeout = timeout || 30000;
+    return new Promise(function(resolve, reject) {
+      var el = document.querySelector(selector);
+      if (el) return resolve(el);
+      var obs = new MutationObserver(function() {
+        el = document.querySelector(selector);
+        if (el) { obs.disconnect(); clearTimeout(t); resolve(el); }
+      });
+      obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      var t = nativeSetTimeout(function() { obs.disconnect(); reject(new Error('Timeout: ' + selector)); }, timeout);
+    });
+  }
+
+  function waitForToastOrSuccess(successSelector, timeout) {
+    timeout = timeout || 15000;
+    return new Promise(function(resolve, reject) {
+      var t = nativeSetTimeout(function() { resolve({ tipo: 'timeout' }); }, timeout);
+      function check() {
+        var toast = getVisible('#toast-container .toast-error');
+        if (toast) { nativeClearTimeout(t); resolve({ tipo: 'toast_erro', texto: toast.textContent || '' }); return; }
+        var ok = getVisible(successSelector);
+        if (ok) { nativeClearTimeout(t); resolve({ tipo: 'sucesso', el: ok }); return; }
+        nativeSetTimeout(check, 300);
+      }
+      check();
+    });
+  }
+
   function waitBlockUI(timeout) {
       timeout = timeout || 15000;
       return new Promise(function(resolve) {
@@ -51,13 +81,10 @@
       });
   }
 
-  // O EXTERMINADOR DE TOASTS E TIMERS DO GOVERNO
   function limparToasts() {
       var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
       try {
-          // Desarma options do Toastr se existir
           if (w.toastr) { w.toastr.options.onHidden = null; w.toastr.options.onCloseClick = null; }
-          // Pega o maior ID atual e varre para trás matando tudo
           var idMax = w.setTimeout(function(){}, 1);
           nativeClearTimeout(idMax);
           for(var i = idMax; i > Math.max(0, idMax - 500); i--){
@@ -65,7 +92,6 @@
           }
       } catch(e){}
       
-      // Fecha e arranca do HTML
       document.querySelectorAll('.toast-close-button').forEach(function(b){ try{b.click();}catch(e){} });
       document.querySelectorAll('#toast-container, .toast').forEach(function(t){ t.remove(); });
   }
@@ -90,7 +116,7 @@
           if (!isSelected) {
               aba.click();
               log('Abrindo aba: ' + seletorAba, 'ok');
-              try { await waitForVisible(seletorPainel, 8000); } catch(e) {}
+              try { await waitForVisible(seletorPainel, 8000); } catch(e) { }
               await delay(1000); 
           }
       }
@@ -127,46 +153,102 @@
   function resetBackoff(){reconnectDelay=RECONNECT_BASE;} function nextBackoff(){reconnectDelay=Math.min(reconnectDelay*2,RECONNECT_MAX);}
 
   function log(msg,tipo){var now=new Date();var ts=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');logs.push({ts:ts,msg:msg,tipo:tipo||'ok'});if(logs.length>MAX_LOGS)logs.shift();console.log('[BRIDGE '+ts+'] '+msg);renderLogs();}
-  function renderLogs(){if(!isANTT)return;var el=document.getElementById('omega-bridge-log');if(!el)return;el.innerHTML=logs.map(function(l){var c=l.tipo==='err'?'om-log-err':l.tipo==='warn'?'om-log-warn':'om-log-ok';return'<span style="color:#555e70">'+l.ts+'</span> <span class="'+c+'">'+l.msg+'</span>';}).join('<br>');el.scrollTop=el.scrollHeight;}
+  function renderLogs(){if(!isANTT)return;var el=document.getElementById('omega-bridge-log');if(!el)return;el.innerHTML=logs.map(function(l){var c=l.tipo==='err'?'om-log-err':l.tipo==='warn'?'om-log-warn':'om-log-ok';return'<span style="color:#555e70">'+l.ts+'</span> <span class="'+c+'">'+l.msg+'</span>';}).join('<br>');if(el)el.scrollTop=el.scrollHeight;}
 
   async function requestWakeLock(){try{if('wakeLock' in navigator){wakeLockSentinel=await navigator.wakeLock.request('screen');}}catch(e){}}
   function releaseWakeLock(){if(wakeLockSentinel){try{wakeLockSentinel.release();}catch(e){}wakeLockSentinel=null;}}
 
-  // BOTÃO E COMANDO DE PARADA DE EMERGÊNCIA
   function paradaDeEmergencia() {
       paused = true; currentTask = null;
-      limparEstado();
-      limparToasts();
-      log('SISTEMA ABORTADO PELO USUARIO', 'err');
+      limparEstado(); limparToasts(); log('SISTEMA ABORTADO PELO USUARIO', 'err');
+      var U = window.OmegaUtils || null;
       if(U) U.box(document.getElementById('omega-bridge-status'), false, '🛑 PARADA DE EMERGENCIA');
-      if(U) U.toast('Automacao Parada!', false);
+      if(U && U.toast) U.toast('Automacao Parada!', false);
   }
   if (typeof unsafeWindow !== 'undefined') unsafeWindow.OmegaParar = paradaDeEmergencia;
 
-  if(isANTT&&U){
-    U.registrarAba('bridge','Bridge',''
-      +'<div class="om-section-title">Conexao VPS</div>'
-      +'<div class="om-mb-sm"><label class="om-label">URL</label><input id="omega-bridge-url" class="om-input" placeholder="https://omhk.com.br"></div>'
-      +'<div class="om-grid om-grid-2 om-mb-sm"><div><label class="om-label">Token</label><input id="omega-bridge-token" class="om-input" type="password" placeholder="Senha"></div><div><label class="om-label">Nome</label><input id="omega-bridge-name" class="om-input" placeholder="Celular"></div></div>'
-      +'<div class="om-grid om-grid-3 om-mb">'
-        +'<button type="button" id="omega-bridge-connect" class="om-btn om-btn-green om-btn-sm">Conectar</button>'
-        +'<button type="button" id="omega-bridge-pause" class="om-btn om-btn-amber om-btn-sm" style="display:none">Pausar</button>'
-        +'<button type="button" id="omega-bridge-stop" class="om-btn om-btn-coral om-btn-sm">Parar Tudo</button>'
-      +'</div>'
-      +'<div id="omega-bridge-status"></div><div id="omega-bridge-task" style="margin-top:6px"></div>'
-      +'<div class="om-section-title" style="margin-top:10px">Log</div><div id="omega-bridge-log" class="om-log"></div>'
-    ,function(){
-      var u=document.getElementById('omega-bridge-url'),t=document.getElementById('omega-bridge-token'),n=document.getElementById('omega-bridge-name');
-      if(u&&VPS_URL)u.value=VPS_URL;if(t&&VPS_TOKEN)t.value=VPS_TOKEN;if(n&&DEVICE_NAME)n.value=DEVICE_NAME;
-      atualizarUI();renderLogs();
-    });
+  // ── INIT DA ANTT COM CÃO DE GUARDA CONTRA RACE CONDITION ──
+  if(isANTT){
+    function initInterfaceANTT() {
+        var U = window.OmegaUtils || null;
+        if (!U) { nativeSetTimeout(initInterfaceANTT, 300); return; } // Espera o core.js carregar
 
-    document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
-    document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
-    document.getElementById('omega-bridge-stop').addEventListener('click',function(e){e.preventDefault();paradaDeEmergencia();});
+        U.registrarAba('bridge','Bridge',''
+          +'<div class="om-section-title">Conexao VPS</div>'
+          +'<div class="om-mb-sm"><label class="om-label">URL</label><input id="omega-bridge-url" class="om-input" placeholder="https://omhk.com.br"></div>'
+          +'<div class="om-grid om-grid-2 om-mb-sm"><div><label class="om-label">Token</label><input id="omega-bridge-token" class="om-input" type="password" placeholder="Senha"></div><div><label class="om-label">Nome</label><input id="omega-bridge-name" class="om-input" placeholder="Celular"></div></div>'
+          +'<div class="om-grid om-grid-3 om-mb">'
+            +'<button type="button" id="omega-bridge-connect" class="om-btn om-btn-green om-btn-sm">Conectar</button>'
+            +'<button type="button" id="omega-bridge-pause" class="om-btn om-btn-amber om-btn-sm" style="display:none">Pausar</button>'
+            +'<button type="button" id="omega-bridge-stop" class="om-btn om-btn-coral om-btn-sm" style="display:none">Parar Tudo</button>'
+          +'</div>'
+          +'<div id="omega-bridge-status"></div><div id="omega-bridge-task" style="margin-top:6px"></div>'
+          +'<div class="om-section-title" style="margin-top:10px">Log</div><div id="omega-bridge-log" class="om-log"></div>'
+        );
+
+        var u=document.getElementById('omega-bridge-url'), t=document.getElementById('omega-bridge-token'), n=document.getElementById('omega-bridge-name');
+        if(u&&VPS_URL)u.value=VPS_URL; if(t&&VPS_TOKEN)t.value=VPS_TOKEN; if(n&&DEVICE_NAME)n.value=DEVICE_NAME;
+        atualizarUI(); renderLogs();
+
+        document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
+        document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
+        document.getElementById('omega-bridge-stop').addEventListener('click',function(e){e.preventDefault();paradaDeEmergencia();});
+        
+        if(U.restaurarAbaSalva) nativeSetTimeout(function(){U.restaurarAbaSalva();},500);
+    }
+    initInterfaceANTT();
   }
 
-  function pausarConexao(m){paused=true;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();log(m||'Pausado','warn');if(U){U.box(document.getElementById('omega-bridge-status'),false,'⏸ '+(m||'Pausado'));}}
+  // ── INIT DO GOV.BR (Mini-Bridge Standalone) ──
+  if(isGovBr){
+    var govCss=document.createElement('style');
+    govCss.textContent='#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}#omega-gov-panel .og-row{margin-bottom:6px}#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
+    document.head.appendChild(govCss);
+    var govPanel=document.createElement('div'); govPanel.id='omega-gov-panel'; var temConfig=!!VPS_URL;
+
+    function renderGovForm(){
+      govPanel.innerHTML='<div class="og-title"><span>OMEGA — Bridge</span></div><div class="og-row"><input id="og-url" placeholder="https://omhk.com.br" value="'+(VPS_URL||'')+'"></div><div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div><div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div><div id="og-conn-status" class="og-status" style="display:none"></div>';
+      var saveBtn=govPanel.querySelector('#og-save');
+      if(saveBtn){ saveBtn.addEventListener('click',function(){ var url=(govPanel.querySelector('#og-url')||{}).value||''; var token=(govPanel.querySelector('#og-token')||{}).value||''; var name=(govPanel.querySelector('#og-name')||{}).value||'Dispositivo'; url=url.trim();token=token.trim();name=name.trim()||'Dispositivo'; if(!url){atualizarGovStatus('URL vazia','err');return;} VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name; gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name); paused=false;errorCount=0;resetBackoff(); renderGovStatus('Conectando (Polling)...','info'); conectarGov(); }); }
+      var hideBtn=govPanel.querySelector('#og-hide'); if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
+    }
+
+    function renderGovStatus(statusText, tipo){
+      govPanel.innerHTML='<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div><div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div><div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
+      var resetBtn=govPanel.querySelector('#og-reset');
+      if(resetBtn){ resetBtn.addEventListener('click',function(){ paused=true; if(govPollInterval){nativeClearInterval(govPollInterval);govPollInterval=null;} connected=false; gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name',''); VPS_URL='';VPS_TOKEN='';DEVICE_NAME=''; renderGovForm(); }); }
+    }
+
+    function atualizarGovStatus(texto,tipo){ var el=govPanel.querySelector('#og-conn-status'); if(!el)return; el.style.display='block'; el.className='og-status og-status-'+(tipo||'info'); el.textContent=texto; }
+
+    function conectarGov(){
+      if(paused||!VPS_URL)return;
+      if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
+      if(govPollInterval) nativeClearInterval(govPollInterval);
+      var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
+      function fazerPoll() {
+          if(paused||!VPS_URL)return;
+          GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
+              onload: function(res) { if(res.status===200){ if(!connected){ connected=true; atualizarGovStatus('Conectado ✓ — HTTP Polling','ok'); } try{ var data=JSON.parse(res.responseText); if(data.type==='task') receberTarefa(data.task); if(data.type==='stop') paradaDeEmergencia(); }catch(e){} } else { connected=false; atualizarGovStatus('Erro Polling (Status '+res.status+')','err'); } },
+              onerror: function() { connected=false; atualizarGovStatus('Erro de Conexao','err'); }
+          });
+      }
+      fazerPoll(); govPollInterval = nativeSetTimeout(fazerPoll, 3000);
+    }
+
+    var _enviarStatusOriginal=enviarStatus;
+    enviarStatus=function(status,message,extra){
+      if(isGovBr && VPS_URL){ var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll'; var payload = { deviceId: DEVICE_ID, status: status, message: message||'' }; if(extra) Object.assign(payload, extra); GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify(payload) }); }
+      if(status==='error'||status==='error_critical')registrarErro(message||'Erro'); else errorCount=0; log(message||status,(status==='error'||status==='error_critical')?'err':'ok');
+      if(!isGovBr)_enviarStatusOriginal(status,message,extra);
+    };
+
+    waitForElement('form, #accountId, .login-content', 15000).then(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); nativeSetTimeout(function(){conectarGov();}, 1500); } else { renderGovForm(); } }).catch(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); } });
+
+    var _logOriginal=log; log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
+  }
+
+  function pausarConexao(m){paused=true;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();log(m||'Pausado','warn');var U = window.OmegaUtils || null; if(U){U.box(document.getElementById('omega-bridge-status'),false,'⏸ '+(m||'Pausado'));}}
   function registrarErro(m){var a=Date.now();errorCount=(a-lastErrorTime<ERROR_WINDOW)?errorCount+1:1;lastErrorTime=a;log(m,'err');if(errorCount>=ERROR_THRESHOLD){pausarConexao('Auto-pause: flood');errorCount=0;}}
 
   function conectar(){
@@ -174,20 +256,21 @@
     var wsUrl = VPS_URL.toLowerCase().trim(); if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws'); if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
     var url=wsUrl+(VPS_TOKEN?((wsUrl.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
     try{ws=new WebSocket(url);}catch(e){log('URL invalida','err');return;}
-    ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
+    ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();var U = window.OmegaUtils || null; if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
     ws.onmessage=function(evt){var msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);}if(msg.type==='stop'){paradaDeEmergencia();}if(msg.type==='task')receberTarefa(msg);};
     ws.onclose=function(evt){connected=false;atualizarUI();var fab=document.getElementById('omega-fab');if(fab)fab.classList.remove('om-fab-connected');if(evt.code===4001){log('Token incorreto','err');return;}if(!paused&&VPS_URL){var s=Math.round(reconnectDelay/1000);log('Retry '+s+'s','warn');reconnectTimer=nativeSetTimeout(function(){nextBackoff();conectar();},reconnectDelay);}};
     ws.onerror=function(){log('Erro WS','err');};
   }
 
-  function desconectar(i){paused=false;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(i){VPS_URL='';gmSet('omega_vps_url','');}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();if(U)U.clearBox(document.getElementById('omega-bridge-status'));log('Desconectado','warn');}
+  function desconectar(i){paused=false;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(i){VPS_URL='';gmSet('omega_vps_url','');}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();var U = window.OmegaUtils || null; if(U)U.clearBox(document.getElementById('omega-bridge-status'));log('Desconectado','warn');}
 
-  function enviarStatus(status,message,extra){if(!ws||ws.readyState!==1)return;var p={type:'status',status:status,message:message||''};if(extra)for(var k in extra)p[k]=extra[k];try{ws.send(JSON.stringify(p));}catch(e){}if(U){var pn=document.getElementById('antt-helper');if(pn&&pn.classList.contains('om-hidden'))U.toast(message||status,status!=='error'&&status!=='error_critical');}if(status==='error'||status==='error_critical')registrarErro(message||'Erro');else errorCount=0;log(message||status,(status==='error'||status==='error_critical')?'err':'ok');}
+  function enviarStatus(status,message,extra){if(!ws||ws.readyState!==1)return;var p={type:'status',status:status,message:message||''};if(extra)for(var k in extra)p[k]=extra[k];try{ws.send(JSON.stringify(p));}catch(e){}var U = window.OmegaUtils || null; if(U){var pn=document.getElementById('antt-helper');if(pn&&pn.classList.contains('om-hidden'))U.toast(message||status,status!=='error'&&status!=='error_critical');}if(status==='error'||status==='error_critical')registrarErro(message||'Erro');else errorCount=0;log(message||status,(status==='error'||status==='error_critical')?'err':'ok');}
 
   function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),s=document.getElementById('omega-bridge-stop');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';s.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';s.style.display='block';}else{c.style.display='block';p.style.display='none';s.style.display=VPS_URL?'block':'none';}}
 
   function receberTarefa(msg){
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
+    var U = window.OmegaUtils || null;
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
     executarFluxo(msg);
   }
@@ -279,7 +362,7 @@
   // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
   // ══════════════════════════════════════════════════════════════
 
-  async function injetarDadosHumanizadosEndereco(d) {
+  async function injetarDadosHumanizadosEndereco(d, U) {
       var f = getVisible('#Logradouro'); 
       if(f){ f.removeAttribute('disabled'); f.focus(); let val = d.logradouro || '0'; await typeSlowly(f, val, 30); f.dispatchEvent(new Event('blur',{bubbles:true})); }
 
@@ -303,6 +386,7 @@
   }
 
   async function preencherEndereco(d, tipoDefault){
+    var U = window.OmegaUtils || null;
     var cep=(d.cep||'').replace(/\D/g,''); 
     await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
     
@@ -317,20 +401,14 @@
             cf.removeAttribute('disabled'); cf.focus();
             cf.value = ''; cf.dispatchEvent(new Event('input',{bubbles:true})); await delay(300);
             await typeSlowly(cf, cepParaDigitar, 60);
-            
-            // Força a saída para o ViaCEP trabalhar
             cf.dispatchEvent(new Event('blur',{bubbles:true}));
             var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-            
-            await delay(1000);
-            await waitBlockUI(15000); 
-            await delay(1000); 
+            await delay(1000); await waitBlockUI(15000); await delay(1000); 
         }
     }
 
     if(cep) await injetarCepEValidar(cep);
 
-    // Validador de Cidade
     var municipioEl = document.getElementById('DescricaoCidade');
     if (!municipioEl || municipioEl.innerText.trim() === '') {
         log('ViaCEP falhou ou CEP vazio. Acionando Fallback...', 'warn');
@@ -341,7 +419,6 @@
         await injetarCepEValidar(cepEmergencia);
     }
 
-    // Seleciona Tipo (COM/RES)
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
         var valToSelect = '';
@@ -352,13 +429,12 @@
     }
     await delay(500);
 
-    // A FUNÇÃO TEIMOSA DE ENDEREÇO
-    await injetarDadosHumanizadosEndereco(d);
+    await injetarDadosHumanizadosEndereco(d, U);
     await delay(1000);
 
     if (await checarSeGovApagouEndereco()) {
         log('Site apagou os dados do ViaCEP. Re-injetando...', 'warn');
-        await injetarDadosHumanizadosEndereco(d);
+        await injetarDadosHumanizadosEndereco(d, U);
     }
 
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
@@ -369,7 +445,7 @@
         await delay(1000);
         if (await checarSeGovApagouEndereco()) {
             log('Checkbox apagou os dados! Re-injetando...', 'warn');
-            await injetarDadosHumanizadosEndereco(d);
+            await injetarDadosHumanizadosEndereco(d, U);
         }
     }
 
@@ -378,11 +454,12 @@
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
         var waitLimit = 0; while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
-        limparToasts(); // MATA OS TOASTS ANTES DE IR PRO CONTATO
+        limparToasts(); 
     }
   }
 
   async function adicionarContato(tipo,valor){
+    var U = window.OmegaUtils || null;
     await abrirAba('a.contatos, a[href="#contatos"]', '#ContatoPedidoPanel, [data-action*="ContatoPedido/Novo"]');
 
     var panel = getVisible('#ContatoPedidoPanel');
@@ -428,17 +505,15 @@
       var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
       checkboxes.forEach(function(cb) {
           if(!cb.checked) {
-              cb.click();
-              cb.checked = true;
-              cb.dispatchEvent(new Event('change', {bubbles:true}));
-              var jq = unsafeWindow.jQuery; 
-              if(jq) { jq(cb).iCheck('check'); jq(cb).trigger('change'); }
+              cb.click(); cb.checked = true; cb.dispatchEvent(new Event('change', {bubbles:true}));
+              var jq = unsafeWindow.jQuery; if(jq) { jq(cb).iCheck('check'); jq(cb).trigger('change'); }
           }
       });
       document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){ d.click(); });
   }
 
   async function preencherGestor(cpf){
+    var U = window.OmegaUtils || null;
     enviarStatus('running','Gestor/socio...',{step:'gestor'});
     await abrirAba('a.gestor, a[href="#gestor"]', '#GestorPedidoPanel, [data-action*="GestorPedido/Novo"]');
 
@@ -487,6 +562,7 @@
   }
 
   async function preencherRT(){
+    var U = window.OmegaUtils || null;
     enviarStatus('running','RT...',{step:'rt'}); var cpfRT=gmGet('omega_rt_cpf','')||'07141753664';
     await abrirAba('a.responsavelTecnico, a[href="#responsavelTecnico"]', '#ResponsavelTecnicoPanel, [data-action*="ResponsavelTecnico/Criar"]');
 
@@ -544,6 +620,7 @@
   // ══════════════════════════════════════════════════════════════
 
   async function processarInclusaoVeiculo(placa,renavam){
+    var U = window.OmegaUtils || null;
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
     var btnN = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
     if(!btnN)throw new Error('Botao veiculo nao encontrado');
@@ -560,9 +637,7 @@
     var cr=getVisible('#Renavam');
     if(cr) {
         cr.removeAttribute('disabled'); cr.value=renavam;
-        cr.dispatchEvent(new Event('input',{bubbles:true})); 
-        cr.dispatchEvent(new Event('change',{bubbles:true})); 
-        cr.dispatchEvent(new Event('blur',{bubbles:true})); 
+        cr.dispatchEvent(new Event('input',{bubbles:true})); cr.dispatchEvent(new Event('change',{bubbles:true})); cr.dispatchEvent(new Event('blur',{bubbles:true})); 
     }
     await delay(500);
     
@@ -572,27 +647,16 @@
     enviarStatus('running','Aguardando ANTT (Dados)...',{step:'veiculo_wait'});
     await delay(1000); 
     
-    // CAÇADOR DE MODAIS MÚLTIPLOS (Atropelo)
     var waitLimit = 0;
     while(waitLimit < 30) {
         var bbs = document.querySelectorAll('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
         var clicouAlgum = false;
         for (var idx=0; idx<bbs.length; idx++) {
-            if (bbs[idx].offsetParent !== null) {
-                bbs[idx].click();
-                clicouAlgum = true;
-                await delay(1500);
-            }
+            if (bbs[idx].offsetParent !== null) { bbs[idx].click(); clicouAlgum = true; await delay(1500); }
         }
-        
-        var tara = getVisible('#Tara');
-        var eixos = getVisible('#Eixos');
-        var uiBlock = document.querySelector('.blockUI');
-        if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) {
-            break;
-        }
-        await delay(1000);
-        waitLimit++;
+        var tara = getVisible('#Tara'); var eixos = getVisible('#Eixos'); var uiBlock = document.querySelector('.blockUI');
+        if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) { break; }
+        await delay(1000); waitLimit++;
     }
 
     var taraEl = getVisible('#Tara');
@@ -705,6 +769,7 @@
   // OS FLUXOS PRINCIPAIS
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
+    var U = window.OmegaUtils || null;
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
@@ -785,6 +850,7 @@
 
   async function fluxoArrendamento(task){
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
+    var U = window.OmegaUtils || null;
     var jq = unsafeWindow.jQuery || unsafeWindow.$;
     
     var cpfArrendanteOriginal = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,'');
@@ -920,5 +986,5 @@
 
   if(VPS_URL&&!paused)nativeSetTimeout(function(){if(isGovBr)conectarGov();else conectar();},2000);
   nativeSetTimeout(verificarEstadoPendente,3000);
-  if(isANTT&&U&&U.restaurarAbaSalva)nativeSetTimeout(function(){U.restaurarAbaSalva();},500);
+
 })();
