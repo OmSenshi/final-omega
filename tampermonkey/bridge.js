@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v8.2 (Sunshine Edition)
-// Dynamic Address Dropdown, Nuclear Toast Sweeper, CPF/CNPJ Sync
+// bridge.js — Final Omega v8.3 (Sunshine Edition)
+// Term Acceptance, CPF Sync, Dynamic Address Dropdown, Nuclear Toast Sweeper
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -74,7 +74,6 @@
 
   function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-  // O ANIQUILADOR NUCLEAR DE TOASTS (Remove direto do HTML)
   function limparToasts() {
       var tc = document.getElementById('toast-container');
       if (tc) { tc.innerHTML = ''; tc.remove(); }
@@ -160,6 +159,8 @@
       if(u&&VPS_URL)u.value=VPS_URL;if(t&&VPS_TOKEN)t.value=VPS_TOKEN;if(n&&DEVICE_NAME)n.value=DEVICE_NAME;
       atualizarUI();renderLogs();
     });
+
+    document.querySelectorAll('#antt-helper input').forEach(function(inp){ inp.addEventListener('focus',function(){this.scrollIntoView({behavior:'smooth',block:'center'});}); });
 
     document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
     document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
@@ -247,59 +248,7 @@
     executarFluxo(msg);
   }
 
-  // PORTA DE ENTRADA PARA O PAINEL MANUAL
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
-
-  // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR
-  // ══════════════════════════════════════════════════════════════
-  async function processarLoginGovBr(){
-    var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
-    var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
-    await delay(1000); 
-    try {
-        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
-        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
-        var senhaF = document.getElementById('password');
-        var cpfF = document.getElementById('accountId');
-
-        if(btnAuth) { log('OAuth — autorizando...','ok'); btnAuth.click(); return; }
-
-        if(btnSkipMfa) {
-            log('MFA — pulando...','warn'); btnSkipMfa.click(); await delay(1000);
-            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
-            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
-            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
-            if(bConf) bConf.click();
-            return;
-        }
-
-        if(senhaF) {
-            log('Tela Senha detectada','ok'); senhaF.focus();
-            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-            nativeInputValueSetter.call(senhaF, cred.senha);
-            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
-            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
-            await delay(500);
-            var btnE = document.getElementById('submit-button');
-            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
-            return;
-        }
-
-        if(cpfF) {
-            log('Tela CPF detectada','ok');
-            await typeSlowly(cpfF, cred.cpf.replace(/\D/g,''), 60); await delay(500);
-            var btnC = document.getElementById('enter-account-id');
-            if(btnC) btnC.click();
-            return;
-        }
-
-        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
-            log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
-            enviarStatus('error','Captcha detectado. Resolva manualmente.');
-        }
-    }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
-  }
 
   // ══════════════════════════════════════════════════════════════
   // ROTEADOR CENTRAL E EXECUÇÃO
@@ -309,6 +258,24 @@
       currentTask = task;
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
+
+      // VERIFICAÇÃO DO TERMO DE USO
+      if (url.indexOf('Home/ExibirTermo') !== -1) {
+          enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
+          var chkTermo = document.getElementById('ckTermo');
+          if (chkTermo) {
+              var jq = unsafeWindow.jQuery; 
+              if (jq) { jq(chkTermo).iCheck('check'); jq(chkTermo).prop('checked', true).trigger('change'); } 
+              else { chkTermo.checked = true; chkTermo.dispatchEvent(new Event('change',{bubbles:true})); }
+              await delay(1000);
+              var btnProsseguir = document.getElementById('bAssinarTermo');
+              if (btnProsseguir) {
+                  salvarEstado('tarefa_pendente_navegacao', task);
+                  btnProsseguir.click();
+                  return; // Para a execução e deixa a página recarregar
+              }
+          }
+      }
 
       if (url.indexOf('Transportador/Cadastro') !== -1 || url.indexOf('Pedido/Criar') !== -1 || url.indexOf('NovoCadastro') !== -1) {
           if (!document.getElementById('Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
@@ -460,7 +427,7 @@
   // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
   // ══════════════════════════════════════════════════════════════
 
-  async function preencherEndereco(d){
+  async function preencherEndereco(d, tipoDefault){
     var cep=(d.cep||'').replace(/\D/g,''); if(!cep){var ceps={MG:['32220390','32017900'],SP:['04805140','01002900'],RJ:['23032486','20211110']};var est=['MG','SP','RJ'][Math.floor(Math.random()*3)];var l=ceps[est]||ceps.MG;cep=l[Math.floor(Math.random()*l.length)];}
     
     await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
@@ -475,8 +442,7 @@
     if(selTipo) {
         var valToSelect = '';
         for(var i=0; i<selTipo.options.length; i++) {
-            if(selTipo.options[i].value === 'COM') valToSelect = 'COM';
-            else if(selTipo.options[i].value === 'RES' && valToSelect !== 'COM') valToSelect = 'RES';
+            if(selTipo.options[i].value === tipoDefault) valToSelect = tipoDefault;
         }
         if(!valToSelect && selTipo.options.length>0) valToSelect = selTipo.options[1].value || selTipo.options[0].value;
 
@@ -811,12 +777,12 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS
+  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
-    var idf = await waitForVisible('#Identidade', 10000);
+    var idf= await waitForVisible('#Identidade', 10000);
     await delay(1500); 
 
     if(idf){
@@ -828,14 +794,15 @@
             else typeSlowly(idf, num, 60).then(resolve);
         });
         idf.dispatchEvent(new Event('blur',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(idf).trigger('blur');
+        await delay(1500);
     }
-    await delay(500);
 
     var oe = getVisible('#OrgaoEmissor');
     if(oe){
         oe.value='SSP';
         oe.dispatchEvent(new Event('change',{bubbles:true}));
-        if(unsafeWindow.jQuery) unsafeWindow.jQuery(oe).trigger('change');
+        var jq = unsafeWindow.jQuery; if(jq) jq(oe).trigger('change');
     }
     await delay(500);
 
@@ -844,12 +811,12 @@
         if(uf){
             uf.value=d.uf.toUpperCase();
             uf.dispatchEvent(new Event('change',{bubbles:true}));
-            if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change');
+            var jq = unsafeWindow.jQuery; if(jq) jq(uf).trigger('change');
         }
     }
     await delay(1000);
 
-    await preencherEndereco(d); 
+    await preencherEndereco(d, 'RES'); // Cadastro CPF usa 'RES' (Residencial)
     await processarVeiculos(task);
   }
 
@@ -863,11 +830,15 @@
         else { cap.checked = true; cap.dispatchEvent(new Event('change',{bubbles:true})); cap.dispatchEvent(new Event('click',{bubbles:true})); }
     }
     
-    await preencherEndereco(d);
+    await preencherEndereco(d, 'COM'); // Cadastro CNPJ usa 'COM' (Comercial)
+    
     var tel=d.telefone||'0000000000';await adicionarContato('2',tel);
     var email=d.email||gerarEmailAleatorio();var eOk=await adicionarContato('4',email);if(!eOk){email=gerarEmailAleatorio();await adicionarContato('4',email);}
+    
     var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; if(cpfSocio)await preencherGestor(cpfSocio.replace(/\D/g,''));
-    await preencherRT(); await processarVeiculos(task);
+    
+    await preencherRT(); 
+    await processarVeiculos(task);
   }
 
   async function fluxoArrendamento(task){
