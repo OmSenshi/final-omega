@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v9.2 (Sunshine Edition)
-// Active Bootbox Hunter, Contact Duplication Check, Save Button Forcer
+// bridge.js — Final Omega v10.0 (Sunshine Edition)
+// ViaCEP Strict Wait, Strict Target Doc (Anti-Arrendatario Leak), Modal Collision Fix
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -9,7 +9,7 @@
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
   // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO NUCLEAR DE TOASTS
+  // RADAR DE VISIBILIDADE E ESPERAS
   // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -77,9 +77,7 @@
   function limparToasts() {
       var tc = document.getElementById('toast-container');
       if (tc) { tc.innerHTML = ''; tc.remove(); }
-      document.querySelectorAll('.toast, .toast-success, .toast-error').forEach(function(t) {
-          t.remove();
-      });
+      document.querySelectorAll('.toast, .toast-success, .toast-error').forEach(function(t) { t.remove(); });
   }
 
   function typeSlowly(el, text, ms) {
@@ -112,22 +110,22 @@
   function lerEstado() { try { var r = gmGet('omega_state',''); if(!r)return null; var s=JSON.parse(r); if(Date.now()-s.ts>900000){limparEstado();return null;} return s; } catch(e){return null;} }
   function limparEstado() { gmSet('omega_state', ''); }
 
+  // GUARDA-COSTAS DO CNPJ: Nunca vai deixar vazar o CPF pro Arrendatário
   function getTargetDoc(task) {
       if (!task) return '';
       if (task.modo === 'arrendamento_avulso' || task.modo === 'arrendamento') {
-          var arr = task.arrendamento || task;
-          if (arr.cpf_arrendatario) return String(arr.cpf_arrendatario).replace(/\D/g, '');
+          if (task.arrendamento && task.arrendamento.cpf_arrendatario) return String(task.arrendamento.cpf_arrendatario).replace(/\D/g, '');
       }
-      var d = task.transportador || task;
-      if (typeof d === 'string') return d.replace(/\D/g, '');
-      var isCnpj = task.modo === 'cadcnpj' || task.tipo === 'cnpj';
-      if (isCnpj) {
-          var c = d.cnpj || (task.cnpj_data && task.cnpj_data.cnpj) || d.cpf_cnpj;
-          if (c) return String(c).replace(/\D/g, '');
+      if (task.modo === 'cadcnpj') {
+          if (task.cnpj_data && task.cnpj_data.cnpj) return String(task.cnpj_data.cnpj).replace(/\D/g, '');
       }
-      var doc = d.cnpj || d.cpf || d.cpf_cnpj;
-      if (doc) return String(doc).replace(/\D/g, '');
-      return (task.credenciais && task.credenciais.cpf ? String(task.credenciais.cpf) : '').replace(/\D/g, '');
+      if (task.modo === 'cadcpf') {
+          if (task.credenciais && task.credenciais.cpf) return String(task.credenciais.cpf).replace(/\D/g, '');
+      }
+      if (task.modo === 'inclusao') {
+          if (task.transportador) return String(task.transportador).replace(/\D/g, '');
+      }
+      return '';
   }
 
   var VPS_URL=gmGet('omega_vps_url',''), VPS_TOKEN=gmGet('omega_vps_token',''), DEVICE_NAME=gmGet('omega_device_name',''), DEVICE_ID=gmGet('omega_device_id','');
@@ -165,7 +163,6 @@
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
   }
 
-  // ── MINI-PAINEL GOV.BR ──
   if(isGovBr){
     var govCss=document.createElement('style');
     govCss.textContent='#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}#omega-gov-panel .og-row{margin-bottom:6px}#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
@@ -249,7 +246,7 @@
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR
+  // MÁQUINA DE ESTADOS GOV.BR E TERMO DE USO
   // ══════════════════════════════════════════════════════════════
   async function processarLoginGovBr(){
     var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
@@ -409,9 +406,6 @@
     } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // INICIAR PEDIDO
-  // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
       await delay(2000);
@@ -472,7 +466,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS
+  // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d, tipoDefault){
@@ -509,8 +503,10 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        await delay(500);
-        await waitBlockUI(10000); 
+        
+        // Espera OBRIGATÓRIA para o ViaCEP da ANTT
+        await delay(1000);
+        await waitBlockUI(15000); 
         await delay(1000);
     }
 
@@ -558,14 +554,18 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
-    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
-    else { log('Botao de salvar endereco nao encontrado', 'err'); }
+    if(bs){ 
+        bs.removeAttribute('disabled'); 
+        bs.click(); 
+        await waitBlockUI(10000); 
+        var waitLimit = 0;
+        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+    }
   }
 
   async function adicionarContato(tipo,valor){
     await abrirAba('a.contatos, a[href="#contatos"]', '#ContatoPedidoPanel, [data-action*="ContatoPedido/Novo"]');
 
-    // CHECAGEM DE DUPLICIDADE
     var panel = getVisible('#ContatoPedidoPanel');
     if(panel) {
         var str = panel.innerText.toLowerCase();
@@ -606,7 +606,13 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar-contato, .modal .btn-primary');
-    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ 
+        bs.removeAttribute('disabled'); 
+        bs.click(); 
+        await waitBlockUI(10000); 
+        var waitLimit = 0;
+        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+    }
 
     var err = getVisible('.validation-summary-errors, .alert-danger, .field-validation-error');
     if(err){
@@ -659,14 +665,28 @@
         await delay(500);
     }
 
+    var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
+    for(var c=0; c<checkboxes.length; c++) {
+        if(!checkboxes[c].checked) {
+            checkboxes[c].click();
+            var jq = unsafeWindow.jQuery; 
+            if(jq) { jq(checkboxes[c]).trigger('change'); jq(checkboxes[c]).iCheck('check'); }
+        }
+    }
     document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){
-        if(d.offsetParent !== null) d.click();
+        d.click();
     });
     await delay(500);
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
-    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ 
+        bs.removeAttribute('disabled'); 
+        bs.click(); 
+        await waitBlockUI(10000); 
+        var waitLimit = 0;
+        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+    }
   }
 
   async function preencherRT(){
@@ -698,14 +718,28 @@
         await delay(500);
     }
 
+    var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
+    for(var c=0; c<checkboxes.length; c++) {
+        if(!checkboxes[c].checked) {
+            checkboxes[c].click();
+            var jq = unsafeWindow.jQuery; 
+            if(jq) { jq(checkboxes[c]).trigger('change'); jq(checkboxes[c]).iCheck('check'); }
+        }
+    }
     document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){
-        if(d.offsetParent !== null) d.click();
+        d.click();
     });
     await delay(500);
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
-    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ 
+        bs.removeAttribute('disabled'); 
+        bs.click(); 
+        await waitBlockUI(10000); 
+        var waitLimit = 0;
+        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+    }
   }
 
   function gerarEmailAleatorio(){var c='abcdefghijklmnopqrstuvwxyz0123456789',s='';for(var i=0;i<12;i++)s+=c[Math.floor(Math.random()*c.length)];return s+'@yahoo.com';}
@@ -763,7 +797,6 @@
     enviarStatus('running','Aguardando ANTT (Dados)...',{step:'veiculo_wait'});
     await delay(1000); 
     
-    // CAÇADOR DE BOOTBOX (Movimentacao de Frota)
     var waitLimit = 0;
     while(waitLimit < 30) {
         var bb = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
@@ -772,7 +805,6 @@
             bb.click();
             await delay(1500);
         }
-
         var tara = getVisible('#Tara');
         var uiBlock = document.querySelector('.blockUI');
         if (tara && !tara.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
@@ -881,16 +913,13 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
+  // OS FLUXOS PRINCIPAIS
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
-    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') {
-        tabTransp.click();
-        await delay(1000);
-    }
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
 
     var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
     await delay(1500); 
@@ -943,10 +972,7 @@
     enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
     
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
-    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') {
-        tabTransp.click();
-        await delay(1000);
-    }
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
 
     var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
     if(cap){
@@ -955,7 +981,7 @@
         else { cap.checked = true; cap.dispatchEvent(new Event('change',{bubbles:true})); cap.dispatchEvent(new Event('click',{bubbles:true})); }
     }
     
-    await preencherEndereco(d, 'COM'); // Cadastro CNPJ usa 'COM' (Comercial)
+    await preencherEndereco(d, 'COM');
     
     var tel=d.telefone||'0000000000';await adicionarContato('2',tel);
     var email=d.email||gerarEmailAleatorio();var eOk=await adicionarContato('4',email);if(!eOk){email=gerarEmailAleatorio();await adicionarContato('4',email);}
