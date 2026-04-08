@@ -1,21 +1,23 @@
-// bridge.js — Final Omega v10.4 (Sunshine Edition)
-// Ultimate Toast Vaccine, Logradouro Click-Trigger, ViaCEP Race Fix
+// bridge.js — Final Omega v11.0 (Sunshine Edition)
+// Ultimate Timer Killer, Stubborn Address, Sequential Modals, Emergency Stop
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
   var U = window.OmegaUtils || null;
 
+  // ISOLAMENTO DO SETTIMEOUT NATIVO PARA NÃO MATAR NOSSA AUTOMAÇÃO
+  var nativeSetTimeout = window.setTimeout;
+  var nativeClearTimeout = window.clearTimeout;
+  var nativeClearInterval = window.clearInterval;
+  if (typeof unsafeWindow !== 'undefined' && unsafeWindow.setTimeout) {
+      nativeSetTimeout = unsafeWindow.setTimeout.bind(unsafeWindow);
+      nativeClearTimeout = unsafeWindow.clearTimeout.bind(unsafeWindow);
+      nativeClearInterval = unsafeWindow.clearInterval.bind(unsafeWindow);
+  }
+  function delay(ms) { return new Promise(function(r) { nativeSetTimeout(r, ms); }); }
+
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
-
-  // VACINA GLOBAL ANTI-RELOAD DA ANTT
-  var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-  setInterval(function() {
-      if (w.toastr && w.toastr.options) {
-          w.toastr.options.onHidden = null;
-          w.toastr.options.onCloseClick = null;
-      }
-  }, 1000);
 
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
@@ -26,72 +28,46 @@
   function waitForVisible(selector, timeout) {
       timeout = timeout || 15000;
       return new Promise(function(resolve, reject) {
-          var t = setTimeout(function() { reject(new Error('Timeout visible: ' + selector)); }, timeout);
+          var t = nativeSetTimeout(function() { reject(new Error('Timeout visible: ' + selector)); }, timeout);
           function check() {
               var el = getVisible(selector);
-              if (el) { clearTimeout(t); resolve(el); return; }
-              setTimeout(check, 300);
+              if (el) { nativeClearTimeout(t); resolve(el); return; }
+              nativeSetTimeout(check, 300);
           }
           check();
       });
-  }
-
-  function waitForElement(selector, timeout) {
-    timeout = timeout || 30000;
-    return new Promise(function(resolve, reject) {
-      var el = document.querySelector(selector);
-      if (el) return resolve(el);
-      var obs = new MutationObserver(function() {
-        el = document.querySelector(selector);
-        if (el) { obs.disconnect(); clearTimeout(t); resolve(el); }
-      });
-      obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
-      var t = setTimeout(function() { obs.disconnect(); reject(new Error('Timeout: ' + selector)); }, timeout);
-    });
-  }
-
-  function waitForToastOrSuccess(successSelector, timeout) {
-    timeout = timeout || 15000;
-    return new Promise(function(resolve, reject) {
-      var t = setTimeout(function() { resolve({ tipo: 'timeout' }); }, timeout);
-      function check() {
-        var toast = getVisible('#toast-container .toast-error');
-        if (toast) { clearTimeout(t); resolve({ tipo: 'toast_erro', texto: toast.textContent || '' }); return; }
-        var ok = getVisible(successSelector);
-        if (ok) { clearTimeout(t); resolve({ tipo: 'sucesso', el: ok }); return; }
-        setTimeout(check, 300);
-      }
-      check();
-    });
   }
 
   function waitBlockUI(timeout) {
       timeout = timeout || 15000;
       return new Promise(function(resolve) {
-          var t = setTimeout(function() { resolve(); }, timeout);
+          var t = nativeSetTimeout(function() { resolve(); }, timeout);
           function check() {
               var block = document.querySelector('.blockUI');
-              if (!block || block.style.display === 'none') { clearTimeout(t); resolve(); return; }
-              setTimeout(check, 300);
+              if (!block || block.style.display === 'none') { nativeClearTimeout(t); resolve(); return; }
+              nativeSetTimeout(check, 300);
           }
           check();
       });
   }
 
-  function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-
+  // O EXTERMINADOR DE TOASTS E TIMERS DO GOVERNO
   function limparToasts() {
-      var wg = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-      if (wg.toastr) {
-          try {
-              wg.toastr.options.onHidden = null;
-              wg.toastr.options.onCloseClick = null;
-              wg.toastr.clear();
-          } catch(e){}
-      }
-      var tc = document.getElementById('toast-container');
-      if (tc) { tc.innerHTML = ''; tc.remove(); }
-      document.querySelectorAll('.toast, .toast-success, .toast-error, .toast-warning').forEach(function(t) { t.remove(); });
+      var w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+      try {
+          // Desarma options do Toastr se existir
+          if (w.toastr) { w.toastr.options.onHidden = null; w.toastr.options.onCloseClick = null; }
+          // Pega o maior ID atual e varre para trás matando tudo
+          var idMax = w.setTimeout(function(){}, 1);
+          nativeClearTimeout(idMax);
+          for(var i = idMax; i > Math.max(0, idMax - 500); i--){
+              w.clearTimeout(i); w.clearInterval(i);
+          }
+      } catch(e){}
+      
+      // Fecha e arranca do HTML
+      document.querySelectorAll('.toast-close-button').forEach(function(b){ try{b.click();}catch(e){} });
+      document.querySelectorAll('#toast-container, .toast').forEach(function(t){ t.remove(); });
   }
 
   function typeSlowly(el, text, ms) {
@@ -101,7 +77,7 @@
       function next() {
         if (i >= text.length) { el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); return resolve(); }
         el.value = text.substring(0, i + 1); el.dispatchEvent(new Event('input',{bubbles:true}));
-        i++; setTimeout(next, ms);
+        i++; nativeSetTimeout(next, ms);
       }
       next();
     });
@@ -114,7 +90,7 @@
           if (!isSelected) {
               aba.click();
               log('Abrindo aba: ' + seletorAba, 'ok');
-              try { await waitForVisible(seletorPainel, 8000); } catch(e) { log('Aba demorou a responder', 'warn'); }
+              try { await waitForVisible(seletorPainel, 8000); } catch(e) {}
               await delay(1000); 
           }
       }
@@ -155,14 +131,28 @@
 
   async function requestWakeLock(){try{if('wakeLock' in navigator){wakeLockSentinel=await navigator.wakeLock.request('screen');}}catch(e){}}
   function releaseWakeLock(){if(wakeLockSentinel){try{wakeLockSentinel.release();}catch(e){}wakeLockSentinel=null;}}
-  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){if(VPS_URL&&!connected&&!paused){if(isGovBr)conectarGov();else conectar();}if(currentTask)requestWakeLock();}});
+
+  // BOTÃO E COMANDO DE PARADA DE EMERGÊNCIA
+  function paradaDeEmergencia() {
+      paused = true; currentTask = null;
+      limparEstado();
+      limparToasts();
+      log('SISTEMA ABORTADO PELO USUARIO', 'err');
+      if(U) U.box(document.getElementById('omega-bridge-status'), false, '🛑 PARADA DE EMERGENCIA');
+      if(U) U.toast('Automacao Parada!', false);
+  }
+  if (typeof unsafeWindow !== 'undefined') unsafeWindow.OmegaParar = paradaDeEmergencia;
 
   if(isANTT&&U){
     U.registrarAba('bridge','Bridge',''
       +'<div class="om-section-title">Conexao VPS</div>'
       +'<div class="om-mb-sm"><label class="om-label">URL</label><input id="omega-bridge-url" class="om-input" placeholder="https://omhk.com.br"></div>'
       +'<div class="om-grid om-grid-2 om-mb-sm"><div><label class="om-label">Token</label><input id="omega-bridge-token" class="om-input" type="password" placeholder="Senha"></div><div><label class="om-label">Nome</label><input id="omega-bridge-name" class="om-input" placeholder="Celular"></div></div>'
-      +'<div class="om-grid om-grid-3 om-mb"><button type="button" id="omega-bridge-connect" class="om-btn om-btn-green om-btn-sm">Conectar</button><button type="button" id="omega-bridge-pause" class="om-btn om-btn-amber om-btn-sm" style="display:none">Pausar</button><button type="button" id="omega-bridge-disconnect" class="om-btn om-btn-coral om-btn-sm" style="display:none">Desconectar</button></div>'
+      +'<div class="om-grid om-grid-3 om-mb">'
+        +'<button type="button" id="omega-bridge-connect" class="om-btn om-btn-green om-btn-sm">Conectar</button>'
+        +'<button type="button" id="omega-bridge-pause" class="om-btn om-btn-amber om-btn-sm" style="display:none">Pausar</button>'
+        +'<button type="button" id="omega-bridge-stop" class="om-btn om-btn-coral om-btn-sm">Parar Tudo</button>'
+      +'</div>'
       +'<div id="omega-bridge-status"></div><div id="omega-bridge-task" style="margin-top:6px"></div>'
       +'<div class="om-section-title" style="margin-top:10px">Log</div><div id="omega-bridge-log" class="om-log"></div>'
     ,function(){
@@ -173,58 +163,10 @@
 
     document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
     document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
-    document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
+    document.getElementById('omega-bridge-stop').addEventListener('click',function(e){e.preventDefault();paradaDeEmergencia();});
   }
 
-  if(isGovBr){
-    var govCss=document.createElement('style');
-    govCss.textContent='#omega-gov-panel{position:fixed;bottom:16px;right:16px;z-index:999999;background:rgba(14,18,30,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-family:"Segoe UI",Arial,sans-serif;color:#c8cdd8;font-size:12px;backdrop-filter:blur(20px);box-shadow:0 4px 24px rgba(0,0,0,0.5);min-width:260px;max-width:320px;transition:all 0.3s}#omega-gov-panel .og-title{font-weight:700;color:#5a9cf5;letter-spacing:2px;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}#omega-gov-panel .og-row{margin-bottom:6px}#omega-gov-panel input{width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#c8cdd8;font-size:11px;outline:none;box-sizing:border-box}#omega-gov-panel input:focus{border-color:rgba(90,156,245,0.4)}#omega-gov-panel button{padding:6px 12px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px;transition:all 0.2s}.og-btn-green{background:linear-gradient(135deg,#34a853,#2d8f47);color:#fff}.og-btn-coral{background:linear-gradient(135deg,#e07065,#c0392b);color:#fff}.og-btn-reset{background:none;border:1px solid rgba(255,255,255,0.15)!important;color:#8a92a6;font-size:10px!important;padding:3px 8px!important}.og-btn-reset:hover{border-color:rgba(224,112,101,0.4)!important;color:#e07065}#omega-gov-panel .og-status{margin-top:6px;font-size:11px;padding:4px 8px;border-radius:6px}.og-status-ok{background:rgba(52,168,83,0.1);color:#5ddb7a;border:1px solid rgba(52,168,83,0.15)}.og-status-err{background:rgba(192,57,43,0.1);color:#e07065;border:1px solid rgba(192,57,43,0.15)}.og-status-info{background:rgba(26,115,232,0.1);color:#5a9cf5;border:1px solid rgba(26,115,232,0.15)}';
-    document.head.appendChild(govCss);
-    var govPanel=document.createElement('div'); govPanel.id='omega-gov-panel'; var temConfig=!!VPS_URL;
-
-    function renderGovForm(){
-      govPanel.innerHTML='<div class="og-title"><span>OMEGA — Bridge</span></div><div class="og-row"><input id="og-url" placeholder="https://omhk.com.br" value="'+(VPS_URL||'')+'"></div><div class="og-row" style="display:flex;gap:4px"><input id="og-token" type="password" placeholder="Token" value="'+(VPS_TOKEN||'')+'"><input id="og-name" placeholder="Nome" value="'+(DEVICE_NAME||'')+'"></div><div style="margin-top:8px"><button class="og-btn-green" id="og-save">Conectar</button><button class="og-btn-coral" id="og-hide">Fechar</button></div><div id="og-conn-status" class="og-status" style="display:none"></div>';
-      var saveBtn=govPanel.querySelector('#og-save');
-      if(saveBtn){ saveBtn.addEventListener('click',function(){ var url=(govPanel.querySelector('#og-url')||{}).value||''; var token=(govPanel.querySelector('#og-token')||{}).value||''; var name=(govPanel.querySelector('#og-name')||{}).value||'Dispositivo'; url=url.trim();token=token.trim();name=name.trim()||'Dispositivo'; if(!url){atualizarGovStatus('URL vazia','err');return;} VPS_URL=url;VPS_TOKEN=token;DEVICE_NAME=name; gmSet('omega_vps_url',url);gmSet('omega_vps_token',token);gmSet('omega_device_name',name); paused=false;errorCount=0;resetBackoff(); renderGovStatus('Conectando (Polling)...','info'); conectarGov(); }); }
-      var hideBtn=govPanel.querySelector('#og-hide'); if(hideBtn){hideBtn.addEventListener('click',function(){govPanel.style.display='none';});}
-    }
-
-    function renderGovStatus(statusText, tipo){
-      govPanel.innerHTML='<div class="og-title"><span>OMEGA</span><button class="og-btn-reset" id="og-reset">Resetar</button></div><div id="og-conn-status" class="og-status og-status-'+(tipo||'info')+'">'+(statusText||'...')+'</div><div id="og-task-status" style="margin-top:6px;font-size:10px;color:#555e70"></div>';
-      var resetBtn=govPanel.querySelector('#og-reset');
-      if(resetBtn){ resetBtn.addEventListener('click',function(){ paused=true; if(govPollInterval){clearInterval(govPollInterval);govPollInterval=null;} connected=false; gmSet('omega_vps_url','');gmSet('omega_vps_token','');gmSet('omega_device_name',''); VPS_URL='';VPS_TOKEN='';DEVICE_NAME=''; renderGovForm(); }); }
-    }
-
-    function atualizarGovStatus(texto,tipo){ var el=govPanel.querySelector('#og-conn-status'); if(!el)return; el.style.display='block'; el.className='og-status og-status-'+(tipo||'info'); el.textContent=texto; }
-
-    function conectarGov(){
-      if(paused||!VPS_URL)return;
-      if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}
-      if(govPollInterval) clearInterval(govPollInterval);
-      var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll';
-      function fazerPoll() {
-          if(paused||!VPS_URL)return;
-          GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify({ deviceId: DEVICE_ID, name: (DEVICE_NAME||'Dispositivo')+' (Gov.br)', status: currentTask?'running':'idle' }),
-              onload: function(res) { if(res.status===200){ if(!connected){ connected=true; atualizarGovStatus('Conectado ✓ — HTTP Polling','ok'); } try{ var data=JSON.parse(res.responseText); if(data.type==='task') receberTarefa(data.task); if(data.type==='stop') pararTarefa(); }catch(e){} } else { connected=false; atualizarGovStatus('Erro Polling (Status '+res.status+')','err'); } },
-              onerror: function() { connected=false; atualizarGovStatus('Erro de Conexao','err'); }
-          });
-      }
-      fazerPoll(); govPollInterval = setInterval(fazerPoll, 3000);
-    }
-
-    var _enviarStatusOriginal=enviarStatus;
-    enviarStatus=function(status,message,extra){
-      if(isGovBr && VPS_URL){ var baseWs = VPS_URL.toLowerCase().trim(); var apiUrl = baseWs.replace(/^wss?:\/\//i, 'https://').replace(/\/ws\/?$/, '') + '/api/govbr/poll'; var payload = { deviceId: DEVICE_ID, status: status, message: message||'' }; if(extra) Object.assign(payload, extra); GM_xmlhttpRequest({ method: "POST", url: apiUrl, headers: { "Content-Type": "application/json", "x-session": VPS_TOKEN }, data: JSON.stringify(payload) }); }
-      if(status==='error'||status==='error_critical')registrarErro(message||'Erro'); else errorCount=0; log(message||status,(status==='error'||status==='error_critical')?'err':'ok');
-      if(!isGovBr)_enviarStatusOriginal(status,message,extra);
-    };
-
-    waitForElement('form, #accountId, .login-content', 15000).then(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); setTimeout(function(){conectarGov();}, 1500); } else { renderGovForm(); } }).catch(function() { document.body.appendChild(govPanel); if(temConfig){ renderGovStatus('Conectando...','info'); conectarGov(); } else { renderGovForm(); } });
-
-    var _logOriginal=log; log=function(msg,tipo){_logOriginal(msg,tipo);var ts=govPanel.querySelector('#og-task-status');if(ts)ts.textContent=msg;};
-  }
-
-  function pausarConexao(m){paused=true;if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();log(m||'Pausado','warn');if(U){U.box(document.getElementById('omega-bridge-status'),false,'⏸ '+(m||'Pausado'));U.toast('Bridge pausado',false);}}
+  function pausarConexao(m){paused=true;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();log(m||'Pausado','warn');if(U){U.box(document.getElementById('omega-bridge-status'),false,'⏸ '+(m||'Pausado'));}}
   function registrarErro(m){var a=Date.now();errorCount=(a-lastErrorTime<ERROR_WINDOW)?errorCount+1:1;lastErrorTime=a;log(m,'err');if(errorCount>=ERROR_THRESHOLD){pausarConexao('Auto-pause: flood');errorCount=0;}}
 
   function conectar(){
@@ -232,82 +174,24 @@
     var wsUrl = VPS_URL.toLowerCase().trim(); if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws'); if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
     var url=wsUrl+(VPS_TOKEN?((wsUrl.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
     try{ws=new WebSocket(url);}catch(e){log('URL invalida','err');return;}
-    ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');U.toast('Bridge conectado',true);}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
-    ws.onmessage=function(evt){var msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);}if(msg.type==='task')receberTarefa(msg);if(msg.type==='stop')pararTarefa();};
-    ws.onclose=function(evt){connected=false;atualizarUI();var fab=document.getElementById('omega-fab');if(fab)fab.classList.remove('om-fab-connected');if(evt.code===4001){log('Token incorreto','err');return;}if(!paused&&VPS_URL){var s=Math.round(reconnectDelay/1000);log('Retry '+s+'s','warn');reconnectTimer=setTimeout(function(){nextBackoff();conectar();},reconnectDelay);}};
+    ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
+    ws.onmessage=function(evt){var msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='registered'){DEVICE_ID=msg.deviceId;gmSet('omega_device_id',DEVICE_ID);}if(msg.type==='stop'){paradaDeEmergencia();}if(msg.type==='task')receberTarefa(msg);};
+    ws.onclose=function(evt){connected=false;atualizarUI();var fab=document.getElementById('omega-fab');if(fab)fab.classList.remove('om-fab-connected');if(evt.code===4001){log('Token incorreto','err');return;}if(!paused&&VPS_URL){var s=Math.round(reconnectDelay/1000);log('Retry '+s+'s','warn');reconnectTimer=nativeSetTimeout(function(){nextBackoff();conectar();},reconnectDelay);}};
     ws.onerror=function(){log('Erro WS','err');};
   }
 
-  function desconectar(i){paused=false;if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;}if(i){VPS_URL='';gmSet('omega_vps_url','');}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();if(U)U.clearBox(document.getElementById('omega-bridge-status'));log('Desconectado','warn');}
+  function desconectar(i){paused=false;if(reconnectTimer){nativeClearTimeout(reconnectTimer);reconnectTimer=null;}if(i){VPS_URL='';gmSet('omega_vps_url','');}if(ws){try{ws.close();}catch(e){}ws=null;}connected=false;releaseWakeLock();atualizarUI();if(U)U.clearBox(document.getElementById('omega-bridge-status'));log('Desconectado','warn');}
 
   function enviarStatus(status,message,extra){if(!ws||ws.readyState!==1)return;var p={type:'status',status:status,message:message||''};if(extra)for(var k in extra)p[k]=extra[k];try{ws.send(JSON.stringify(p));}catch(e){}if(U){var pn=document.getElementById('antt-helper');if(pn&&pn.classList.contains('om-hidden'))U.toast(message||status,status!=='error'&&status!=='error_critical');}if(status==='error'||status==='error_critical')registrarErro(message||'Erro');else errorCount=0;log(message||status,(status==='error'||status==='error_critical')?'err':'ok');}
 
-  function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),d=document.getElementById('omega-bridge-disconnect');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';d.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';d.style.display='block';}else{c.style.display='block';p.style.display='none';d.style.display=VPS_URL?'block':'none';}}
+  function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),s=document.getElementById('omega-bridge-stop');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';s.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';s.style.display='block';}else{c.style.display='block';p.style.display='none';s.style.display=VPS_URL?'block':'none';}}
 
   function receberTarefa(msg){
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
-    if(msg.credenciais&&msg.credenciais.cpf&&msg.credenciais.senha){
-      if(isANTT){ executarFluxo(msg); return; }
-      salvarEstado('login_govbr',msg);
-      processarLoginGovBr();
-      return;
-    }
     executarFluxo(msg);
   }
-
-  if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
-
-  // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR E TERMO DE USO
-  // ══════════════════════════════════════════════════════════════
-  async function processarLoginGovBr(){
-    var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
-    var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
-    await delay(1000); 
-    try {
-        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
-        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
-        var senhaF = document.getElementById('password');
-        var cpfF = document.getElementById('accountId');
-
-        if(btnAuth) { log('OAuth — autorizando...','ok'); btnAuth.click(); return; }
-
-        if(btnSkipMfa) {
-            log('MFA — pulando...','warn'); btnSkipMfa.click(); await delay(1000);
-            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
-            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
-            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
-            if(bConf) bConf.click();
-            return;
-        }
-
-        if(senhaF) {
-            log('Tela Senha detectada','ok'); senhaF.focus();
-            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-            nativeInputValueSetter.call(senhaF, cred.senha);
-            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
-            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
-            await delay(500);
-            var btnE = document.getElementById('submit-button');
-            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
-            return;
-        }
-
-        if(cpfF) {
-            log('Tela CPF detectada','ok');
-            await typeSlowly(cpfF, cred.cpf.replace(/\D/g,''), 60); await delay(500);
-            var btnC = document.getElementById('enter-account-id');
-            if(btnC) btnC.click();
-            return;
-        }
-
-        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
-            log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
-            enviarStatus('error','Captcha detectado. Resolva manualmente.');
-        }
-    }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
-  }
+  if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
   // ROTEADOR CENTRAL E EXECUÇÃO
@@ -315,27 +199,11 @@
   async function executarFluxo(task){
     try{
       currentTask = task;
+      if (paused) return;
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
 
       await delay(2000);
-
-      if (url.indexOf('Home/ExibirTermo') !== -1) {
-          enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
-          var chkTermo = document.getElementById('ckTermo');
-          if (chkTermo) {
-              var jq = unsafeWindow.jQuery; 
-              if (jq) { jq(chkTermo).iCheck('check'); jq(chkTermo).prop('checked', true).trigger('change'); } 
-              else { chkTermo.checked = true; chkTermo.dispatchEvent(new Event('change',{bubbles:true})); }
-              await delay(1000);
-              var btnProsseguir = document.getElementById('bAssinarTermo');
-              if (btnProsseguir) {
-                  salvarEstado('tarefa_pendente_navegacao', task);
-                  btnProsseguir.click();
-                  return; 
-              }
-          }
-      }
 
       if (url.indexOf('Transportador/Cadastro') !== -1 || url.indexOf('Pedido/Criar') !== -1 || url.indexOf('NovoCadastro') !== -1) {
           if (!document.getElementById('Identidade') && !document.getElementById('TransportadorTac_Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
@@ -365,8 +233,7 @@
           }
       }
 
-      var isHome = url.endsWith('.gov.br/') || url.indexOf('Home') !== -1 || (url.indexOf('Transportador/Cadastro') === -1 && url.indexOf('Pedido/Criar') === -1 && url.indexOf('NovoCadastro') === -1 && url.indexOf('Identidade') === -1 && !document.getElementById('Identidade') && !document.getElementById('TransportadorTac_Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && url.indexOf('/Pedido/') === -1 && url.indexOf('GerenciarFrota') === -1 && url.indexOf('GerenciamentoFrota') === -1 && url.indexOf('Movimentacao') === -1 && url.indexOf('ContratoArrendamento/Criar') === -1);
-
+      var isHome = url.endsWith('.gov.br/') || url.indexOf('Home') !== -1;
       if (isHome) {
           enviarStatus('running', 'Navegando para o destino...');
           salvarEstado('tarefa_pendente_navegacao', task);
@@ -378,53 +245,9 @@
     }catch(e){ enviarStatus('error_critical','Fatal: '+e.message); log('FATAL: '+e.message,'err'); }
   }
 
-  function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
-
-  // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE RESGATE
-  // ══════════════════════════════════════════════════════════════
-  async function executarResgateNaPagina(cpfCnpj, task) {
-    try {
-      enviarStatus('running', 'Processando resgate...', {step:'resgate_ok'});
-      var selDoc = await waitForElement('#CpfCnpjTransportadorCertificado', 10000);
-      var jq = unsafeWindow.jQuery || unsafeWindow.$;
-      for(var i=0;i<selDoc.options.length;i++){ if(selDoc.options[i].value.replace(/\D/g,'').indexOf(cpfCnpj.replace(/\D/g,''))!==-1){ selDoc.value=selDoc.options[i].value; if(jq)jq(selDoc).trigger('change');else selDoc.dispatchEvent(new Event('change',{bubbles:true})); break; } }
-      await delay(500);
-      var selSit = document.getElementById('SituacaoPedido'); if(selSit){selSit.value='CAD';selSit.dispatchEvent(new Event('change',{bubbles:true}));} await delay(300);
-      var btnConsultar = document.querySelector('.btn-consultar, button.btn-blue'); if(btnConsultar) btnConsultar.click(); await delay(3000);
-      
-      var rows = document.querySelectorAll('table tbody tr, .table tbody tr'); var encontrou = false;
-      for(var r=0;r<rows.length;r++){
-        if((rows[r].textContent||'').indexOf('EM CADASTRAMENTO') === -1) continue;
-        var btnEditar = rows[r].querySelector('a[title="Editar"]');
-        if(btnEditar){
-            var href = btnEditar.getAttribute('href');
-            if (href && href !== 'undefined' && href.trim() !== '') {
-                salvarEstado('tarefa_pendente_navegacao', task);
-                window.location.href = href.startsWith('http') ? href : 'https://rntrcdigital.antt.gov.br' + href;
-                encontrou = true; break;
-            } else {
-                salvarEstado('tarefa_pendente_navegacao', task);
-                btnEditar.click(); 
-                encontrou = true; break;
-            }
-        }
-        var btnHist = rows[r].querySelector('a[title="Histórico"], a[data-toggle-modal="true"], .fa-inbox');
-        if(btnHist){
-          if(btnHist.tagName === 'I') btnHist = btnHist.closest('a'); if(btnHist) btnHist.click(); await delay(2000);
-          var detalhes = {dataHora:'?',situacao:'?',usuario:'?',nome:'?',entidade:'?'};
-          try{ var lis = document.querySelectorAll('.modal-body li'); lis.forEach(function(li){ var label = (li.childNodes[0]||{}).textContent||''; var valor = (li.querySelector('span')||li.querySelector('p')||{}).textContent||''; if(label.indexOf('Data')!==-1) detalhes.dataHora = valor.trim(); else if(label.indexOf('Situa')!==-1) detalhes.situacao = valor.trim(); else if(label.indexOf('Usu')!==-1) detalhes.usuario = valor.trim(); else if(label.indexOf('Nome')!==-1) detalhes.nome = valor.trim(); }); }catch(e){}
-          enviarStatus('erro_fatal','Pedido bloqueado por: '+(detalhes.nome||detalhes.usuario),{detalhes:detalhes}); encontrou = true; limparEstado(); break;
-        }
-      }
-      if(!encontrou) { enviarStatus('error','Nenhum pedido em cadastramento encontrado.'); limparEstado(); }
-    } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
-  }
-
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
       var doc = getTargetDoc(task); 
-      
       var sel = document.querySelector('select#CpfCnpjTransportador') || document.querySelector('select');
       if (sel) {
           var found = false;
@@ -439,43 +262,16 @@
           
           await delay(1500);
           var btnCriar = document.getElementById('btnCriarPedido') || document.querySelector('.btn-primary') || document.querySelector('button[type="submit"]');
-          
           if(!btnCriar) {
               var btns = document.querySelectorAll('button');
               for(var b=0; b<btns.length; b++) { if(btns[b].textContent.indexOf('Criar Pedido') !== -1) { btnCriar = btns[b]; break; } }
           }
-          
           if(btnCriar) {
               salvarEstado('tarefa_pendente_navegacao', task);
               btnCriar.click();
-              
-              var resultado = await waitForToastOrSuccess('.nav-tabs, #Identidade, #TransportadorTac_Identidade, #TransportadorEtc_SituacaoCapacidadeFinanceira', 10000);
-              
-              if(resultado && resultado.tipo === 'toast_erro'){ 
-                  var msgLower = resultado.texto.toLowerCase();
-                  log('Erro ANTT: ' + resultado.texto, 'err');
-                  
-                  if(msgLower.indexOf('pedido') !== -1 || msgLower.indexOf('cadastramento') !== -1){
-                      log('Pedido bloqueado. Iniciando Resgate...','warn');
-                      limparEstado();
-                      salvarEstado('resgate_pedido', { cpfCnpj: doc, task: task });
-                      window.location.href = 'https://rntrcdigital.antt.gov.br/AcompanharPedidos';
-                      return;
-                  } 
-                  else if (msgLower.indexOf('já possui') !== -1 || msgLower.indexOf('ativo') !== -1 || msgLower.indexOf('cadastrado') !== -1) {
-                      enviarStatus('erro_fatal', 'Bloqueio: ' + resultado.texto);
-                      limparEstado(); return;
-                  } 
-                  else {
-                      enviarStatus('error', 'Falha ANTT: ' + resultado.texto);
-                      limparEstado(); return;
-                  }
-              }
           } else {
               enviarStatus('error', 'Botão Criar Pedido não encontrado.'); limparEstado(); return;
           }
-      } else {
-          enviarStatus('error', 'Lista de transportadores não encontrada.'); limparEstado(); return;
       }
   }
 
@@ -483,136 +279,106 @@
   // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
   // ══════════════════════════════════════════════════════════════
 
+  async function injetarDadosHumanizadosEndereco(d) {
+      var f = getVisible('#Logradouro'); 
+      if(f){ f.removeAttribute('disabled'); f.focus(); let val = d.logradouro || '0'; await typeSlowly(f, val, 30); f.dispatchEvent(new Event('blur',{bubbles:true})); }
+
+      var nf = getVisible('#Numero'); 
+      if(nf){ nf.removeAttribute('disabled'); nf.focus(); let val = d.numero || '0'; await typeSlowly(nf, val, 30); nf.dispatchEvent(new Event('blur',{bubbles:true})); }
+      
+      if(d.complemento) { 
+          var cf2 = getVisible('#Complemento'); 
+          if(cf2) { cf2.removeAttribute('disabled'); cf2.focus(); await typeSlowly(cf2, d.complemento, 30); cf2.dispatchEvent(new Event('blur',{bubbles:true})); } 
+      }
+
+      var bf = getVisible('#Bairro'); 
+      if(bf){ bf.removeAttribute('disabled'); bf.focus(); let val = d.bairro || '0'; await typeSlowly(bf, val, 30); bf.dispatchEvent(new Event('blur',{bubbles:true})); }
+  }
+
+  async function checarSeGovApagouEndereco() {
+      var f = getVisible('#Logradouro'); var nf = getVisible('#Numero');
+      if (f && f.value.trim() === '') return true;
+      if (nf && nf.value.trim() === '') return true;
+      return false;
+  }
+
   async function preencherEndereco(d, tipoDefault){
     var cep=(d.cep||'').replace(/\D/g,''); 
-    
     await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
     
     var btn = getVisible('[data-action*="Endereco/Novo"], [data-action*="EnderecoPedido"]');
-    if(btn){ btn.click(); }
+    if(btn) btn.click();
 
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
 
-    async function esperarViaCEP() {
-        var limite = 0;
-        while(limite < 30) {
-            var cid = document.getElementById('DescricaoCidade');
-            var blk = document.querySelector('.blockUI');
-            var isBlk = blk && blk.style.display !== 'none';
-            if(cid && cid.innerText.trim() !== '' && !isBlk) break;
-            await delay(500);
-            limite++;
-        }
-    }
-
     async function injetarCepEValidar(cepParaDigitar) {
         if(cf){ 
-            cf.removeAttribute('disabled');
-            cf.focus();
+            cf.removeAttribute('disabled'); cf.focus();
             cf.value = ''; cf.dispatchEvent(new Event('input',{bubbles:true})); await delay(300);
-            await new Promise(function(resolve){
-                if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cepParaDigitar, { delay:60, onDone: resolve });
-                else typeSlowly(cf, cepParaDigitar, 60).then(resolve);
-            });
+            await typeSlowly(cf, cepParaDigitar, 60);
             
-            // O GATILHO: Clicar no Logradouro forçará a ANTT a acionar os Correios (ViaCEP)
-            var logTrigger = getVisible('#Logradouro');
-            if (logTrigger) { logTrigger.focus(); logTrigger.click(); }
-            else cf.dispatchEvent(new Event('blur',{bubbles:true}));
-            
+            // Força a saída para o ViaCEP trabalhar
+            cf.dispatchEvent(new Event('blur',{bubbles:true}));
             var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
             
             await delay(1000);
-            await esperarViaCEP();
-            await delay(1000); // Respiro após o preenchimento automático
+            await waitBlockUI(15000); 
+            await delay(1000); 
         }
     }
 
     if(cep) await injetarCepEValidar(cep);
 
+    // Validador de Cidade
     var municipioEl = document.getElementById('DescricaoCidade');
     if (!municipioEl || municipioEl.innerText.trim() === '') {
         log('ViaCEP falhou ou CEP vazio. Acionando Fallback...', 'warn');
         var ufDoc = document.getElementById('UfSigla_Descricao');
         var ufTxt = ufDoc ? ufDoc.innerText.trim().toUpperCase() : '';
-        
-        var cepsFallback = {
-            'RJ': ['23032486', '20211110', '22290240'],
-            'SP': ['04805140', '01002900', '01310930'],
-            'MG': ['32220390', '32017900', '30130000']
-        };
-        var cepEmergencia = '';
-        if(cepsFallback[ufTxt]) cepEmergencia = cepsFallback[ufTxt][Math.floor(Math.random() * cepsFallback[ufTxt].length)];
-        else cepEmergencia = cepsFallback['MG'][0];
-
+        var cepsFallback = { 'RJ': ['23032486', '20211110'], 'SP': ['04805140', '01002900'], 'MG': ['32220390', '32017900'] };
+        var cepEmergencia = (cepsFallback[ufTxt]) ? cepsFallback[ufTxt][0] : cepsFallback['MG'][0];
         await injetarCepEValidar(cepEmergencia);
     }
 
+    // Seleciona Tipo (COM/RES)
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
         var valToSelect = '';
-        for(var i=0; i<selTipo.options.length; i++) {
-            if(selTipo.options[i].value === tipoDefault) valToSelect = tipoDefault;
-        }
+        for(var i=0; i<selTipo.options.length; i++) if(selTipo.options[i].value === tipoDefault) valToSelect = tipoDefault;
         if(!valToSelect && selTipo.options.length>0) valToSelect = selTipo.options[1].value || selTipo.options[0].value;
-
-        selTipo.value = valToSelect; 
-        selTipo.dispatchEvent(new Event('change',{bubbles:true}));
+        selTipo.value = valToSelect; selTipo.dispatchEvent(new Event('change',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
     }
     await delay(500);
 
-    var f = getVisible('#Logradouro'); 
-    if(f){ 
-        f.removeAttribute('disabled'); f.focus();
-        let val = d.logradouro || '0';
-        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(f, val, {delay:40, onDone:r}) : typeSlowly(f, val, 40).then(r));
-        f.dispatchEvent(new Event('blur',{bubbles:true})); 
+    // A FUNÇÃO TEIMOSA DE ENDEREÇO
+    await injetarDadosHumanizadosEndereco(d);
+    await delay(1000);
+
+    if (await checarSeGovApagouEndereco()) {
+        log('Site apagou os dados do ViaCEP. Re-injetando...', 'warn');
+        await injetarDadosHumanizadosEndereco(d);
     }
 
-    var nf = getVisible('#Numero'); 
-    if(nf){ 
-        nf.removeAttribute('disabled'); nf.focus();
-        let val = d.numero || '0';
-        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(nf, val, {delay:40, onDone:r}) : typeSlowly(nf, val, 40).then(r));
-        nf.dispatchEvent(new Event('blur',{bubbles:true})); 
-    }
-    
-    if(d.complemento) { 
-        var cf2 = getVisible('#Complemento'); 
-        if(cf2) { 
-            cf2.removeAttribute('disabled'); cf2.focus();
-            await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(cf2, d.complemento, {delay:40, onDone:r}) : typeSlowly(cf2, d.complemento, 40).then(r));
-            cf2.dispatchEvent(new Event('blur',{bubbles:true})); 
-        } 
-    }
-
-    var bf = getVisible('#Bairro'); 
-    if(bf){ 
-        bf.removeAttribute('disabled'); bf.focus();
-        let val = d.bairro || '0';
-        await new Promise(r => U.digitarCharAChar ? U.digitarCharAChar(bf, val, {delay:40, onDone:r}) : typeSlowly(bf, val, 40).then(r));
-        bf.dispatchEvent(new Event('blur',{bubbles:true})); 
-    }
-    
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
     if(me){ 
         if(!me.checked) me.click();
-        me.checked = true; 
-        me.dispatchEvent(new Event('change',{bubbles:true})); 
+        me.checked = true; me.dispatchEvent(new Event('change',{bubbles:true})); 
         var jq = unsafeWindow.jQuery; if(jq) { jq(me).trigger('change'); jq('.icheckbox_flat-blue input').iCheck('check'); }
+        await delay(1000);
+        if (await checarSeGovApagouEndereco()) {
+            log('Checkbox apagou os dados! Re-injetando...', 'warn');
+            await injetarDadosHumanizadosEndereco(d);
+        }
     }
-    await delay(1000);
 
-    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
     if(bs){ 
-        bs.removeAttribute('disabled'); 
-        bs.click(); 
+        bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        var waitLimit = 0;
-        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+        var waitLimit = 0; while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+        limparToasts(); // MATA OS TOASTS ANTES DE IR PRO CONTATO
     }
   }
 
@@ -622,12 +388,8 @@
     var panel = getVisible('#ContatoPedidoPanel');
     if(panel) {
         var str = panel.innerText.toLowerCase();
-        if ((tipo === '1' || tipo === '2') && (str.indexOf('telefone') !== -1 || str.indexOf('celular') !== -1 || str.indexOf('(00) 0000-0000') !== -1)) {
-            log('Telefone/Celular ja existe. Pulando.', 'warn'); return true;
-        }
-        if (tipo === '4' && (str.indexOf('email') !== -1 || str.indexOf('@') !== -1)) {
-            log('Email ja existe. Pulando.', 'warn'); return true;
-        }
+        if ((tipo === '1' || tipo === '2') && (str.indexOf('telefone') !== -1 || str.indexOf('celular') !== -1 || str.indexOf('(00) 0000-0000') !== -1)) { return true; }
+        if (tipo === '4' && (str.indexOf('email') !== -1 || str.indexOf('@') !== -1)) { return true; }
     }
 
     var btn = getVisible('[data-action*="ContatoPedido/Novo"]');
@@ -639,41 +401,41 @@
     
     var selTipo = getVisible('#CodigoTipoContato');
     if(selTipo) {
-        selTipo.value = tipo;
-        selTipo.dispatchEvent(new Event('change',{bubbles:true}));
+        selTipo.value = tipo; selTipo.dispatchEvent(new Event('change',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(selTipo).trigger('change');
     }
     await delay(500);
 
     if(cf) {
-        cf.removeAttribute('disabled');
-        cf.focus();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, valor, { delay:60, onDone: resolve });
-            else typeSlowly(cf, valor, 60).then(resolve);
-        });
+        cf.removeAttribute('disabled'); cf.focus();
+        await typeSlowly(cf, valor, 60);
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
     await delay(500);
 
-    limparToasts();
     var bs = getVisible('.modal .btn-salvar-contato, .modal .btn-primary');
     if(bs){ 
-        bs.removeAttribute('disabled'); 
-        bs.click(); 
+        bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        var waitLimit = 0;
-        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
-    }
-
-    var err = getVisible('.validation-summary-errors, .alert-danger, .field-validation-error');
-    if(err){
-        var fc = getVisible('.modal .close, [data-dismiss="modal"]');
-        if(fc) fc.click();
-        await delay(500); return false;
+        var waitLimit = 0; while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+        limparToasts();
     }
     return true;
+  }
+
+  async function forcarCheckboxesModal() {
+      var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
+      checkboxes.forEach(function(cb) {
+          if(!cb.checked) {
+              cb.click();
+              cb.checked = true;
+              cb.dispatchEvent(new Event('change', {bubbles:true}));
+              var jq = unsafeWindow.jQuery; 
+              if(jq) { jq(cb).iCheck('check'); jq(cb).trigger('change'); }
+          }
+      });
+      document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){ d.click(); });
   }
 
   async function preencherGestor(cpf){
@@ -690,10 +452,8 @@
     if(sel) {
         for(var i=0; i<sel.options.length; i++){
             if(sel.options[i].text.toLowerCase().indexOf('socio')!==-1 || sel.options[i].text.toLowerCase().indexOf('sócio')!==-1){
-                sel.value = sel.options[i].value;
-                sel.dispatchEvent(new Event('change',{bubbles:true}));
-                var jq = unsafeWindow.jQuery; if(jq) jq(sel).trigger('change');
-                break;
+                sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true}));
+                var jq = unsafeWindow.jQuery; if(jq) jq(sel).trigger('change'); break;
             }
         }
     }
@@ -701,12 +461,8 @@
 
     var cf = getVisible('.modal #Cpf, .modal input[name="Cpf"], .modal input[name="CpfCnpj"]');
     if(cf){
-        cf.removeAttribute('disabled');
-        cf.focus();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cpf, { delay:70, onDone: resolve });
-            else typeSlowly(cf, cpf, 70).then(resolve);
-        });
+        cf.removeAttribute('disabled'); cf.focus();
+        await typeSlowly(cf, cpf, 70);
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
@@ -718,27 +474,15 @@
         await delay(500);
     }
 
-    var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
-    for(var c=0; c<checkboxes.length; c++) {
-        if(!checkboxes[c].checked) {
-            checkboxes[c].click();
-            var jq = unsafeWindow.jQuery; 
-            if(jq) { jq(checkboxes[c]).trigger('change'); jq(checkboxes[c]).iCheck('check'); }
-        }
-    }
-    document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){
-        d.click();
-    });
+    await forcarCheckboxesModal();
     await delay(500);
 
-    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
     if(bs){ 
-        bs.removeAttribute('disabled'); 
-        bs.click(); 
+        bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        var waitLimit = 0;
-        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+        var waitLimit = 0; while(getVisible('.modal.show, .modal.in') && waitLimit < 15) { await delay(1000); waitLimit++; }
+        limparToasts();
     }
   }
 
@@ -754,12 +498,8 @@
     await delay(1500);
 
     if(cf){
-        cf.removeAttribute('disabled');
-        cf.focus();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cpfRT, { delay:70, onDone: resolve });
-            else typeSlowly(cf, cpfRT, 70).then(resolve);
-        });
+        cf.removeAttribute('disabled'); cf.focus();
+        await typeSlowly(cf, cpfRT, 70);
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
     }
@@ -771,27 +511,15 @@
         await delay(500);
     }
 
-    var checkboxes = document.querySelectorAll('.modal input[type="checkbox"]');
-    for(var c=0; c<checkboxes.length; c++) {
-        if(!checkboxes[c].checked) {
-            checkboxes[c].click();
-            var jq = unsafeWindow.jQuery; 
-            if(jq) { jq(checkboxes[c]).trigger('change'); jq(checkboxes[c]).iCheck('check'); }
-        }
-    }
-    document.querySelectorAll('.modal .icheckbox_square-blue:not(.checked), .modal .icheckbox_flat-blue:not(.checked)').forEach(function(d){
-        d.click();
-    });
+    await forcarCheckboxesModal();
     await delay(500);
 
-    limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
     if(bs){ 
-        bs.removeAttribute('disabled'); 
-        bs.click(); 
+        bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        var waitLimit = 0;
-        while(getVisible('.modal.show, .modal.in') && waitLimit < 10) { await delay(1000); waitLimit++; }
+        var waitLimit = 0; while(getVisible('.modal.show, .modal.in') && waitLimit < 15) { await delay(1000); waitLimit++; }
+        limparToasts();
     }
   }
 
@@ -824,20 +552,14 @@
     var cp = await waitForVisible('#Placa', 10000); 
     await delay(1500); 
 
-    cp.removeAttribute('disabled');
-    cp.focus();
+    cp.removeAttribute('disabled'); cp.focus();
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
-    
-    await new Promise(function(resolve){
-        if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
-        else typeSlowly(cp, pLimpa, 80).then(resolve);
-    });
+    await typeSlowly(cp, pLimpa, 80);
     cp.dispatchEvent(new Event('blur',{bubbles:true}));
 
     var cr=getVisible('#Renavam');
     if(cr) {
-        cr.removeAttribute('disabled');
-        cr.value=renavam;
+        cr.removeAttribute('disabled'); cr.value=renavam;
         cr.dispatchEvent(new Event('input',{bubbles:true})); 
         cr.dispatchEvent(new Event('change',{bubbles:true})); 
         cr.dispatchEvent(new Event('blur',{bubbles:true})); 
@@ -850,41 +572,43 @@
     enviarStatus('running','Aguardando ANTT (Dados)...',{step:'veiculo_wait'});
     await delay(1000); 
     
+    // CAÇADOR DE MODAIS MÚLTIPLOS (Atropelo)
     var waitLimit = 0;
     while(waitLimit < 30) {
-        var bb = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
-        if (bb) {
-            log('Modal de movimentacao detectado. Confirmando...', 'warn');
-            bb.click();
-            await delay(1500);
+        var bbs = document.querySelectorAll('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
+        var clicouAlgum = false;
+        for (var idx=0; idx<bbs.length; idx++) {
+            if (bbs[idx].offsetParent !== null) {
+                bbs[idx].click();
+                clicouAlgum = true;
+                await delay(1500);
+            }
         }
+        
         var tara = getVisible('#Tara');
+        var eixos = getVisible('#Eixos');
         var uiBlock = document.querySelector('.blockUI');
-        if (tara && !tara.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
+        if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) {
+            break;
+        }
         await delay(1000);
         waitLimit++;
     }
 
     var taraEl = getVisible('#Tara');
     if(taraEl && (!taraEl.value || taraEl.value.trim() === '')) {
-        taraEl.removeAttribute('disabled');
-        taraEl.value = '2';
-        taraEl.dispatchEvent(new Event('input',{bubbles:true}));
-        taraEl.dispatchEvent(new Event('change',{bubbles:true}));
+        taraEl.removeAttribute('disabled'); taraEl.value = '2';
+        taraEl.dispatchEvent(new Event('input',{bubbles:true})); taraEl.dispatchEvent(new Event('change',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(taraEl).trigger('change');
     }
 
-    var eixos = getVisible('#Eixos');
-    if(eixos && (!eixos.value || eixos.value.trim() === '' || eixos.value === '0')) {
-        eixos.removeAttribute('disabled');
-        eixos.value = '2';
-        eixos.dispatchEvent(new Event('change',{bubbles:true}));
-        var jq = unsafeWindow.jQuery; if(jq) jq(eixos).trigger('change');
+    var eixosEl = getVisible('#Eixos');
+    if(eixosEl && (!eixosEl.value || eixosEl.value.trim() === '' || eixosEl.value === '0')) {
+        eixosEl.removeAttribute('disabled'); eixosEl.value = '2';
+        eixosEl.dispatchEvent(new Event('change',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(eixosEl).trigger('change');
     }
-
     await delay(500);
-
-    limparToasts();
 
     var bs = getVisible('.btn-salvar-veiculo, .btn-confirmar-inclusao');
     if(bs){ bs.removeAttribute('disabled'); bs.click(); log('Salvo: '+placa,'ok'); } 
@@ -895,22 +619,23 @@
     if(bbFinal) { bbFinal.click(); await delay(1500); }
 
     await waitBlockUI(10000); await delay(1000);
+    limparToasts();
   }
 
   async function processarVeiculos(task){
+    if (paused) return;
     var veiculos=task.veiculos||[]; var d=task.transportador||task;
     
     if(veiculos.length===0&&d.placa&&d.renavam) veiculos=[{tipo_veiculo:d.tipo_veiculo||d.tipoVeiculo||'nao',placa:d.placa,renavam:d.renavam,cpf_arrendante:d.cpf_arrendante||'',nome_arrendante:d.nome_arrendante||''}];
-    
     if(veiculos.length===0||(veiculos.length===1&&(veiculos[0].tipo_veiculo||'nao').toLowerCase()==='nao')){
       await finalizarPedidoANTT(); return;
     }
     
     await abrirAba('a.veiculo, a[href="#veiculo"]', '#VeiculoPedidoPanel, [data-action*="Veiculo/Novo"]');
-
     var vi = parseInt(gmGet('omega_current_vehicle_index','0')) || 0;
 
     for(; vi<veiculos.length; vi++){
+      if (paused) return;
       var v=veiculos[vi];var tipoV=(v.tipo_veiculo||'proprio').toLowerCase(); if(tipoV==='nao')continue;
       
       gmSet('omega_current_vehicle_index', String(vi));
@@ -919,8 +644,7 @@
         enviarStatus('running','Terceiro: arrendamento '+v.placa,{step:'desvio'}); 
         gmSet('omega_return_url', window.location.href);
         salvarEstado('inclusao_pendente_arrendamento',{
-            modo: 'arrendamento', 
-            transportador:task.transportador||task, veiculos:veiculos, currentVehicleIndex:vi, 
+            modo: 'arrendamento', transportador:task.transportador||task, veiculos:veiculos, currentVehicleIndex:vi, 
             credenciais:task.credenciais, cnpj_data:task.cnpj_data, 
             arrendamento:{placa:v.placa, renavam:v.renavam, cpf_arrendante:v.cpf_arrendante||'', nome_arrendante:v.nome_arrendante||''}
         });
@@ -937,33 +661,24 @@
   async function fluxoInclusao(task){
     enviarStatus('running','Acessando Frota',{step:'inclusao'}); 
     var transp = getTargetDoc(task);
-    
-    var formAberto = null;
-    var btnCriar = null;
+    var formAberto = null; var btnCriar = null;
 
     for(var i=0; i<20; i++){
         formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
         if(formAberto) break;
-        
         btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
         if(btnCriar) break;
-        
         await delay(500);
     }
     
-    if(formAberto) { 
-        await processarVeiculos(task); 
-        return; 
-    }
+    if(formAberto) { await processarVeiculos(task); return; }
 
     if(btnCriar) {
         var sel = document.querySelector('select');
         if(sel) {
             for(var i=0;i<sel.options.length;i++){
                 if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1 || sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){
-                    sel.value=sel.options[i].value;
-                    sel.dispatchEvent(new Event('change',{bubbles:true})); 
-                    break;
+                    sel.value=sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); break;
                 }
             }
         }
@@ -980,15 +695,14 @@
                 enviarStatus('erro_fatal', 'Falha ao acessar frota: ' + resultado.texto); limparEstado(); return;
             }
         }
-        setTimeout(function(){ executarFluxo(task); }, 2000);
+        nativeSetTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
-    
     enviarStatus('error', 'Painel de frota nao carregou a tempo.');
   }
 
   // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS (CPF e CNPJ sincronizados)
+  // OS FLUXOS PRINCIPAIS
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
@@ -1000,25 +714,17 @@
     await delay(1500); 
 
     if(idf){
-        idf.removeAttribute('disabled');
-        idf.focus();
+        idf.removeAttribute('disabled'); idf.focus();
         var num = (d.identidade||d.cnh||'000000').replace(/[^0-9a-zA-Z]/g,'');
         if(!num) num = '000000';
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(idf, num, { delay:60, onDone: resolve });
-            else typeSlowly(idf, num, 60).then(resolve);
-        });
+        await typeSlowly(idf, num, 60);
         idf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(idf).trigger('blur');
         await delay(1500);
     }
 
     var oe = getVisible('#OrgaoEmissor, #TransportadorTac_OrgaoEmissor, input[name*="OrgaoEmissor"], select[name*="OrgaoEmissor"]');
-    if(oe){
-        oe.value='SSP';
-        oe.dispatchEvent(new Event('change',{bubbles:true}));
-        var jq = unsafeWindow.jQuery; if(jq) jq(oe).trigger('change');
-    }
+    if(oe){ oe.value='SSP'; oe.dispatchEvent(new Event('change',{bubbles:true})); var jq = unsafeWindow.jQuery; if(jq) jq(oe).trigger('change'); }
     await delay(500);
 
     if(d.uf){
@@ -1027,11 +733,8 @@
             var targetUf = d.uf.replace(/[^A-Za-z]/g, '').toUpperCase();
             for(var i=0; i<uf.options.length; i++){
                 if(uf.options[i].value.toUpperCase() === targetUf){
-                    uf.selectedIndex = i;
-                    uf.value = uf.options[i].value;
-                    uf.dispatchEvent(new Event('change',{bubbles:true}));
-                    if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change');
-                    break;
+                    uf.selectedIndex = i; uf.value = uf.options[i].value; uf.dispatchEvent(new Event('change',{bubbles:true}));
+                    if(unsafeWindow.jQuery) unsafeWindow.jQuery(uf).trigger('change'); break;
                 }
             }
         }
@@ -1039,10 +742,13 @@
     await delay(1000);
 
     await preencherEndereco(d, 'RES'); 
-    
+    if (paused) return;
+
     var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
+    if (paused) return;
     var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
-    
+    if (paused) return;
+
     await processarVeiculos(task);
   }
 
@@ -1060,13 +766,20 @@
     }
     
     await preencherEndereco(d, 'COM');
+    if (paused) return;
     
-    var tel=d.telefone||'0000000000';await adicionarContato('2',tel);
-    var email=d.email||gerarEmailAleatorio();var eOk=await adicionarContato('4',email);if(!eOk){email=gerarEmailAleatorio();await adicionarContato('4',email);}
+    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
+    if (paused) return;
+    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
+    if (paused) return;
     
-    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; if(cpfSocio)await preencherGestor(cpfSocio.replace(/\D/g,''));
+    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; 
+    if(cpfSocio) await preencherGestor(cpfSocio.replace(/\D/g,''));
+    if (paused) return;
     
     await preencherRT(); 
+    if (paused) return;
+
     await processarVeiculos(task);
   }
 
@@ -1101,24 +814,21 @@
     await delay(1500); 
 
     if (cpfArrendanteOriginal || nomeArrendante) {
-        enviarStatus('running','Substituindo HTML Proprietario...', {step: 'arrendamento_subst'});
-        var ap = null;
-        var nt = document.getElementById('NomesTransportador');
+        enviarStatus('running','Substituindo HTML...', {step: 'arrendamento_subst'});
+        var ap = null; var nt = document.getElementById('NomesTransportador');
         if(nt && nt.value) { try { var jArr=JSON.parse(nt.value); if(jArr&&jArr[0]&&jArr[0].CpfCnpj) ap=jArr[0].CpfCnpj.replace(/\D/g,''); } catch(e){} }
         if(!ap && U) ap = U.getDoc();
 
         if(cpfArrendanteOriginal && ap && U){ U.substituirTudo(U.fAuto(ap), U.fAuto(cpfArrendanteOriginal)); U.substituirTudo(ap, cpfArrendanteOriginal); }
         if(nomeArrendante && U){
-            var an = U.getNome();
-            if(an) U.substituirTudo(an, nomeArrendante);
+            var an = U.getNome(); if(an) U.substituirTudo(an, nomeArrendante);
             var cv = document.getElementById('NomeArrendanteInput') || document.getElementById('NomeArrendante');
             if(cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); }
         }
         var novoJson = JSON.stringify([{"CpfCnpj":cpfArrendanteOriginal, "Nome":nomeArrendante}]);
         if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
         ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){
-            var el = document.getElementById(id);
-            if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
+            var el = document.getElementById(id); if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
         });
 
         await delay(500);
@@ -1137,13 +847,9 @@
 
     var cp = await waitForVisible('#Placa', 5000);
     if(cp){
-        cp.removeAttribute('disabled');
-        cp.focus();
+        cp.removeAttribute('disabled'); cp.focus();
         var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cp, pLimpa, { delay:80, delayEspecial:{4:150}, onDone: resolve });
-            else typeSlowly(cp, pLimpa, 80).then(resolve);
-        });
+        await typeSlowly(cp, pLimpa, 80);
         cp.dispatchEvent(new Event('blur',{bubbles:true}));
     }
     await delay(300);
@@ -1151,9 +857,7 @@
     var cr = document.getElementById('Renavam');
     if(cr){
         cr.removeAttribute('disabled'); cr.value = arr.renavam||'';
-        cr.dispatchEvent(new Event('input',{bubbles:true}));
-        cr.dispatchEvent(new Event('change',{bubbles:true}));
-        cr.dispatchEvent(new Event('blur',{bubbles:true}));
+        cr.dispatchEvent(new Event('input',{bubbles:true})); cr.dispatchEvent(new Event('change',{bubbles:true})); cr.dispatchEvent(new Event('blur',{bubbles:true}));
     }
     await delay(500);
 
@@ -1166,8 +870,7 @@
             var di = document.getElementById('DataInicio');
             var uiBlock = document.querySelector('.blockUI');
             if (di && !di.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
-            await delay(1000);
-            waitLimit++;
+            await delay(1000); waitLimit++;
         }
     }
     await delay(1000); 
@@ -1184,63 +887,38 @@
     if(cpfArrendatario){
         var af = document.getElementById('CPFCNPJArrendatario') || document.querySelector('input[name*="CpfCnpjArrendatario"]');
         if(af){
-            af.removeAttribute('disabled');
-            af.focus();
-            await new Promise(function(resolve){
-                if(U && U.digitarCharAChar) U.digitarCharAChar(af, cpfArrendatario, { delay:60, onDone: resolve });
-                else typeSlowly(af, cpfArrendatario, 60).then(resolve);
-            });
+            af.removeAttribute('disabled'); af.focus();
+            await typeSlowly(af, cpfArrendatario, 60);
             af.dispatchEvent(new Event('blur',{bubbles:true}));
             var btnBuscarArrendatario = document.getElementById('btnBuscarArrendatario'); 
             if(btnBuscarArrendatario && getVisible('#btnBuscarArrendatario')) { btnBuscarArrendatario.click(); await delay(1000); }
         }
     }
     await delay(1000);
-
     limparToasts();
 
     enviarStatus('running','Salvando...',{step:'arrendamento_salvar'}); var btnS=document.querySelector('#btnSalvar,.btn-salvarContrato');if(btnS)btnS.click();await delay(3000);
     try{
       await waitForURL('ContratoArrendamento/Index',15000);enviarStatus('done','Arrendamento OK!');
       var returnUrl=gmGet('omega_return_url','');
-      if (returnUrl) {
-          gmSet('omega_return_url','');
-          salvarEstado('tarefa_pendente_navegacao', task); 
-          window.location.href = returnUrl;
-      }
+      if (returnUrl) { gmSet('omega_return_url',''); salvarEstado('tarefa_pendente_navegacao', task); window.location.href = returnUrl; }
     }catch(e){enviarStatus('error','Arrendamento falhou.');}
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // O GUARDA DE TRÂNSITO
-  // ══════════════════════════════════════════════════════════════
   function verificarEstadoPendente(){
     var estado = lerEstado(); if(!estado) return;
     log('Memoria detectada: ' + estado.estado, 'warn');
-    
     if(isGovBr && estado.estado === 'login_govbr'){ processarLoginGovBr(); return; }
-
     if(isANTT && (estado.estado === 'login_govbr' || estado.estado === 'tarefa_pendente_navegacao' || estado.estado === 'inclusao_pendente_arrendamento' || estado.estado === 'pendente_arrendamento')) {
-        var task = estado.dados;
-        limparEstado(); 
-        currentTask = task;
-        setTimeout(function(){
-             if(VPS_URL && !connected) conectar();
-             executarFluxo(task); 
-        }, 1500);
-        return;
+        var task = estado.dados; limparEstado(); currentTask = task;
+        nativeSetTimeout(function(){ if(VPS_URL && !connected) conectar(); executarFluxo(task); }, 1500); return;
     }
-
     if(isANTT && estado.estado === 'resgate_pedido' && location.href.indexOf('AcompanharPedidos') !== -1) {
-        setTimeout(function(){
-            if(VPS_URL && !connected) conectar();
-            executarResgateNaPagina(estado.dados.cpfCnpj, estado.dados.task);
-        }, 2000);
-        return;
+        nativeSetTimeout(function(){ if(VPS_URL && !connected) conectar(); executarResgateNaPagina(estado.dados.cpfCnpj, estado.dados.task); }, 2000); return;
     }
   }
 
-  if(VPS_URL&&!paused)setTimeout(function(){if(isGovBr)conectarGov();else conectar();},2000);
-  setTimeout(verificarEstadoPendente,3000);
-  if(isANTT&&U&&U.restaurarAbaSalva)setTimeout(function(){U.restaurarAbaSalva();},500);
+  if(VPS_URL&&!paused)nativeSetTimeout(function(){if(isGovBr)conectarGov();else conectar();},2000);
+  nativeSetTimeout(verificarEstadoPendente,3000);
+  if(isANTT&&U&&U.restaurarAbaSalva)nativeSetTimeout(function(){U.restaurarAbaSalva();},500);
 })();
