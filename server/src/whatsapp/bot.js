@@ -1,4 +1,4 @@
-// src/whatsapp/bot.js — Final Omega v6.2: WhatsApp Maestro (Anti-Asterisk Supreme)
+// src/whatsapp/bot.js — Final Omega v6.3: WhatsApp Maestro (Two-Points Strict Parser)
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -24,15 +24,16 @@ const TEMPLATE_ARRENDAMENTO = '[OMEGA ARRENDAMENTO AVULSO]\n*👤 Login:* \n*�
 
 const TEMPLATES_MAP = { '!cadcpf': TEMPLATE_CADCPF, '!cadcnpj': TEMPLATE_CADCNPJ, '!inclusao': TEMPLATE_INCLUSAO, '!arrendamento': TEMPLATE_ARRENDAMENTO };
 
-// DESTRUIDOR DE ASTERISCOS E EMOJIS
+// EXTRATOR CIRÚRGICO: Ignora emojis, asteriscos e corta EXATAMENTE nos dois pontos ":"
 function extractByPrefix(lines, prefix) {
   for (let line of lines) {
-      let noAst = line.replace(/\*/g, '').trim(); // Elimina TODOS os asteriscos
-      let cleanLine = noAst.replace(/^[^a-zA-Z0-9]+/g, ''); // Elimina emojis do inicio
+      let cleanLine = line.replace(/\*/g, '').trim(); 
+      cleanLine = cleanLine.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{2B50}\u{200B}-\u{200D}]+\s*/u, ''); 
       if (cleanLine.toLowerCase().startsWith(prefix.toLowerCase())) {
-          let val = cleanLine.substring(prefix.length).trim();
-          val = val.replace(/^[:\-]\s*/, '').trim(); // Limpa dois pontos e espacos
-          return val;
+          let idx = cleanLine.indexOf(':');
+          if (idx !== -1) {
+              return cleanLine.substring(idx + 1).trim();
+          }
       }
   }
   return '';
@@ -114,7 +115,7 @@ const client = new Client({ authStrategy: new LocalAuth({ dataPath: SESSION_DIR 
 let targetGroupId = null, botReady = false; const pendingDocs = new Map();
 
 client.on('qr', qr => { console.log('\n  ═══ ESCANEIE O QR CODE ═══'); qrcode.generate(qr, { small: true }); });
-client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v6.2 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
+client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v6.3 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
 client.on('auth_failure', msg => console.error('  ✗ Auth:', msg)); client.on('disconnected', reason => { console.log('  ✗ Desconectado:', reason); setTimeout(() => client.initialize(), 5000); });
 
 client.on('message_create', async msg => {
@@ -129,8 +130,8 @@ client.on('message_create', async msg => {
     }
     const text = (msg.body || '').trim(); const textLow = text.toLowerCase();
     if (TEMPLATES_MAP[textLow]) { await msg.reply(TEMPLATES_MAP[textLow]); return; }
-    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v6.2 (Sunshine)*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
-    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 6.2 (Sunshine Edition)'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
+    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v6.3 (Sunshine)*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
+    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 6.3 (Sunshine Edition)'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
     if (text.toUpperCase().startsWith('[OMEGA')) {
       const task = parseFilledTemplate(text); if (!task) { await msg.reply('❌ Formato invalido. Use !cadcpf pra ver o modelo.'); return; }
       let resumo = '📋 *Tarefa detectada:* ' + task.modo.toUpperCase() + '\n';
@@ -147,5 +148,5 @@ async function sendFileToGroup(filepath, caption) { if (!botReady || !targetGrou
 async function sendError(message, step) { return sendToGroup('⚠️ *Erro*\nEtapa: ' + (step||'?') + '\n' + message); }
 async function sendBloqueio(detalhes) { const msg = '❌ *BLOQUEIO DE PEDIDO DETECTADO*\nO cliente esta com pedido aberto em outro ponto.\n\n📋 *DETALHES:*\n🗓️ *Data/Hora:* ' + (detalhes.dataHora || '?') + '\n🔄 *Situacao:* ' + (detalhes.situacao || '?') + '\n👤 *Usuario:* ' + (detalhes.usuario || '?') + '\n📛 *Nome:* ' + (detalhes.nome || '?') + '\n🏢 *Entidade:* ' + (detalhes.entidade || '?') + '\n\n⚠️ *ACAO NECESSARIA:* Solicite o fechamento do pedido.'; return sendToGroup(msg); }
 async function sendDocuments() { const c = path.join(DOWNLOAD_DIR, 'Carteirinha.pdf'); const e = path.join(DOWNLOAD_DIR, 'Extrato.pdf'); if (fs.existsSync(c)) await sendFileToGroup(c, '✅ Carteirinha RNTRC'); if (fs.existsSync(e)) await sendFileToGroup(e, '✅ Extrato RNTRC'); }
-function startBot() { console.log('\n  Omega WhatsApp Bot v6.2 (Sunshine)'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
+function startBot() { console.log('\n  Omega WhatsApp Bot v6.3 (Sunshine)'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
 module.exports = { startBot, sendToGroup, sendFileToGroup, sendError, sendBloqueio, sendDocuments };
