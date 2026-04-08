@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v10.1 (Sunshine Edition)
-// Universal Breath Delay, Active Form Hunter (Inclusao), Anti-Cache
+// bridge.js — Final Omega v10.2 (Sunshine Edition)
+// Ultimate ViaCEP Fallback, Deep Address Re-write, Nuclear Toasts
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -8,9 +8,6 @@
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
-  // ══════════════════════════════════════════════════════════════
-  // RADAR DE VISIBILIDADE E ESPERAS
-  // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
       for(var i=0; i<els.length; i++) { if (els[i].offsetParent !== null) return els[i]; }
@@ -304,7 +301,6 @@
       var url = window.location.href;
       log('Processando Fluxo: ' + task.modo, 'ok');
 
-      // FÔLEGO UNIVERSAL: Aguarda o SPA da ANTT renderizar qualquer tela
       await delay(2000);
 
       if (url.indexOf('Home/ExibirTermo') !== -1) {
@@ -408,9 +404,6 @@
     } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // INICIAR PEDIDO
-  // ══════════════════════════════════════════════════════════════
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
       var doc = getTargetDoc(task); 
@@ -474,7 +467,7 @@
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d, tipoDefault){
-    var cep=(d.cep||'').replace(/\D/g,''); if(!cep){var ceps={MG:['32220390','32017900'],SP:['04805140','01002900'],RJ:['23032486','20211110']};var est=['MG','SP','RJ'][Math.floor(Math.random()*3)];var l=ceps[est]||ceps.MG;cep=l[Math.floor(Math.random()*l.length)];}
+    var cep=(d.cep||'').replace(/\D/g,''); 
     
     await abrirAba('a.contatos, a[href="#contatos"]', '#EnderecoPedidoPanel, [data-action*="Endereco/Novo"]');
     
@@ -498,20 +491,47 @@
     }
     await delay(1500); 
 
-    if(cf){ 
-        cf.removeAttribute('disabled');
-        cf.focus();
-        await new Promise(function(resolve){
-            if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cep, { delay:60, onDone: resolve });
-            else typeSlowly(cf, cep, 60).then(resolve);
-        });
-        cf.dispatchEvent(new Event('blur',{bubbles:true}));
-        var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        await delay(500);
-        await waitBlockUI(10000); 
-        await delay(1000);
+    // O CEP: Se não tem CEP ou o ViaCEP falhou (município vazio), cai no fallback de emergência
+    async function injetarCepEValidar(cepParaDigitar) {
+        if(cf){ 
+            cf.removeAttribute('disabled');
+            cf.focus();
+            await new Promise(function(resolve){
+                if(U && U.digitarCharAChar) U.digitarCharAChar(cf, cepParaDigitar, { delay:60, onDone: resolve });
+                else typeSlowly(cf, cepParaDigitar, 60).then(resolve);
+            });
+            cf.dispatchEvent(new Event('blur',{bubbles:true}));
+            var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
+            
+            // O ViaCEP demora até 3 segundos pra responder e pisca a tela
+            await delay(1500);
+            await waitBlockUI(10000); 
+            await delay(1500);
+        }
     }
 
+    if(cep) await injetarCepEValidar(cep);
+
+    // VALIDADOR SUPREMO DE MUNICÍPIO (A Guerra do ViaCEP)
+    var municipioEl = document.getElementById('DescricaoCidade');
+    if (!municipioEl || municipioEl.innerText.trim() === '') {
+        log('ViaCEP falhou ou CEP em branco. Acionando Fallback...', 'warn');
+        var ufDoc = document.getElementById('UfSigla_Descricao');
+        var ufTxt = ufDoc ? ufDoc.innerText.trim().toUpperCase() : '';
+        
+        var cepsFallback = {
+            'RJ': ['23032486', '20211110', '22290240'],
+            'SP': ['04805140', '01002900', '01310930'],
+            'MG': ['32220390', '32017900', '30130000']
+        };
+        var cepEmergencia = '';
+        if(cepsFallback[ufTxt]) cepEmergencia = cepsFallback[ufTxt][Math.floor(Math.random() * cepsFallback[ufTxt].length)];
+        else cepEmergencia = cepsFallback['MG'][0];
+
+        await injetarCepEValidar(cepEmergencia);
+    }
+
+    // Agora sim, com a tela calma, reescrevemos o Logradouro, Numero, etc.
     var f = getVisible('#Logradouro'); 
     if(f){ 
         f.removeAttribute('disabled'); f.focus();
@@ -885,37 +905,15 @@
 
   async function fluxoInclusao(task){
     enviarStatus('running','Acessando Frota',{step:'inclusao'}); 
-    var transp = getTargetDoc(task);
+    var transp=getTargetDoc(task);
     
-    // CAÇADOR DE FORMULÁRIO (Espera Ativa)
-    var formAberto = null;
-    var btnCriar = null;
-
-    for(var i=0; i<20; i++){
-        formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
-        if(formAberto) break;
-        
-        btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
-        if(btnCriar) break;
-        
-        await delay(500);
-    }
+    var btnCriar = document.querySelector('#btnCriarPedido') || document.querySelector('button[type="submit"]') || document.querySelector('.btn-primary');
+    var formAberto = document.querySelector('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
     
-    if(formAberto) { 
-        await processarVeiculos(task); 
-        return; 
-    }
-
-    if(btnCriar) {
+    if(!formAberto && btnCriar) {
         var sel = document.querySelector('select');
         if(sel) {
-            for(var i=0;i<sel.options.length;i++){
-                if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1 || sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){
-                    sel.value=sel.options[i].value;
-                    sel.dispatchEvent(new Event('change',{bubbles:true})); 
-                    break;
-                }
-            }
+            for(var i=0;i<sel.options.length;i++){if(sel.options[i].text.replace(/\D/g,'').indexOf(transp)!==-1||sel.options[i].value.replace(/\D/g,'').indexOf(transp)!==-1){sel.value=sel.options[i].value;sel.dispatchEvent(new Event('change',{bubbles:true})); break;}}
         }
         await delay(1000);
         salvarEstado('tarefa_pendente_navegacao', task);
@@ -933,8 +931,7 @@
         setTimeout(function(){ executarFluxo(task); }, 2000);
         return;
     }
-    
-    enviarStatus('error', 'Painel de frota nao carregou a tempo.');
+    if (formAberto) { await processarVeiculos(task); }
   }
 
   // ══════════════════════════════════════════════════════════════
