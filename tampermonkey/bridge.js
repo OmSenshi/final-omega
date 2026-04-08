@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v8.3 (Sunshine Edition)
-// Term Acceptance, CPF Sync, Dynamic Address Dropdown, Nuclear Toast Sweeper
+// bridge.js — Final Omega v8.4 (Sunshine Edition)
+// Multi-Target Selectors (TAC/ETC), Term Acceptance, Nuclear Toast Sweeper
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -160,8 +160,6 @@
       atualizarUI();renderLogs();
     });
 
-    document.querySelectorAll('#antt-helper input').forEach(function(inp){ inp.addEventListener('focus',function(){this.scrollIntoView({behavior:'smooth',block:'center'});}); });
-
     document.getElementById('omega-bridge-connect').addEventListener('click',function(e){e.preventDefault();VPS_URL=document.getElementById('omega-bridge-url').value.trim();VPS_TOKEN=document.getElementById('omega-bridge-token').value.trim();DEVICE_NAME=document.getElementById('omega-bridge-name').value.trim()||'Dispositivo';if(!VPS_URL)return U.box(document.getElementById('omega-bridge-status'),false,'URL vazia.');gmSet('omega_vps_url',VPS_URL);gmSet('omega_vps_token',VPS_TOKEN);gmSet('omega_device_name',DEVICE_NAME);paused=false;errorCount=0;resetBackoff();conectar();});
     document.getElementById('omega-bridge-pause').addEventListener('click',function(e){e.preventDefault();if(paused){paused=false;errorCount=0;resetBackoff();conectar();}else pausarConexao('Pausado');});
     document.getElementById('omega-bridge-disconnect').addEventListener('click',function(e){e.preventDefault();desconectar(true);});
@@ -251,6 +249,57 @@
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; } else { window.OmegaStartLocalTask = receberTarefa; }
 
   // ══════════════════════════════════════════════════════════════
+  // MÁQUINA DE ESTADOS GOV.BR
+  // ══════════════════════════════════════════════════════════════
+  async function processarLoginGovBr(){
+    var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
+    var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
+    await delay(1000); 
+    try {
+        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
+        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
+        var senhaF = document.getElementById('password');
+        var cpfF = document.getElementById('accountId');
+
+        if(btnAuth) { log('OAuth — autorizando...','ok'); btnAuth.click(); return; }
+
+        if(btnSkipMfa) {
+            log('MFA — pulando...','warn'); btnSkipMfa.click(); await delay(1000);
+            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
+            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
+            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
+            if(bConf) bConf.click();
+            return;
+        }
+
+        if(senhaF) {
+            log('Tela Senha detectada','ok'); senhaF.focus();
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(senhaF, cred.senha);
+            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
+            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
+            await delay(500);
+            var btnE = document.getElementById('submit-button');
+            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
+            return;
+        }
+
+        if(cpfF) {
+            log('Tela CPF detectada','ok');
+            await typeSlowly(cpfF, cred.cpf.replace(/\D/g,''), 60); await delay(500);
+            var btnC = document.getElementById('enter-account-id');
+            if(btnC) btnC.click();
+            return;
+        }
+
+        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
+            log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
+            enviarStatus('error','Captcha detectado. Resolva manualmente.');
+        }
+    }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // ROTEADOR CENTRAL E EXECUÇÃO
   // ══════════════════════════════════════════════════════════════
   async function executarFluxo(task){
@@ -272,19 +321,19 @@
               if (btnProsseguir) {
                   salvarEstado('tarefa_pendente_navegacao', task);
                   btnProsseguir.click();
-                  return; // Para a execução e deixa a página recarregar
+                  return; 
               }
           }
       }
 
       if (url.indexOf('Transportador/Cadastro') !== -1 || url.indexOf('Pedido/Criar') !== -1 || url.indexOf('NovoCadastro') !== -1) {
-          if (!document.getElementById('Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
+          if (!document.getElementById('Identidade') && !document.getElementById('TransportadorTac_Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && (task.modo === 'cadcpf' || task.modo === 'cadcnpj' || task.modo === 'cadastro')) {
               await iniciarPedidoCadastro(task);
               return;
           }
       }
       
-      var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
+      var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorTac_Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
       if (isFormulario) {
           if (task.modo === 'cadcpf' || (task.modo === 'cadastro' && task.tipo !== 'cnpj')) { await fluxoCadastroCPF(task); }
           else if (task.modo === 'cadcnpj' || (task.modo === 'cadastro' && task.tipo === 'cnpj')) { await fluxoCadastroCNPJ(task); }
@@ -305,7 +354,7 @@
           }
       }
 
-      var isHome = url.endsWith('.gov.br/') || url.indexOf('Home') !== -1 || (url.indexOf('Transportador/Cadastro') === -1 && url.indexOf('Pedido/Criar') === -1 && url.indexOf('NovoCadastro') === -1 && url.indexOf('Identidade') === -1 && !document.getElementById('Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && url.indexOf('/Pedido/') === -1 && url.indexOf('GerenciarFrota') === -1 && url.indexOf('GerenciamentoFrota') === -1 && url.indexOf('Movimentacao') === -1 && url.indexOf('ContratoArrendamento/Criar') === -1);
+      var isHome = url.endsWith('.gov.br/') || url.indexOf('Home') !== -1 || (url.indexOf('Transportador/Cadastro') === -1 && url.indexOf('Pedido/Criar') === -1 && url.indexOf('NovoCadastro') === -1 && url.indexOf('Identidade') === -1 && !document.getElementById('Identidade') && !document.getElementById('TransportadorTac_Identidade') && !document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') && url.indexOf('/Pedido/') === -1 && url.indexOf('GerenciarFrota') === -1 && url.indexOf('GerenciamentoFrota') === -1 && url.indexOf('Movimentacao') === -1 && url.indexOf('ContratoArrendamento/Criar') === -1);
 
       if (isHome) {
           enviarStatus('running', 'Navegando para o destino...');
@@ -393,7 +442,7 @@
               salvarEstado('tarefa_pendente_navegacao', task);
               btnCriar.click();
               
-              var resultado = await waitForToastOrSuccess('.nav-tabs, #Identidade, #TransportadorEtc_SituacaoCapacidadeFinanceira', 10000);
+              var resultado = await waitForToastOrSuccess('.nav-tabs, #Identidade, #TransportadorTac_Identidade, #TransportadorEtc_SituacaoCapacidadeFinanceira', 10000);
               
               if(resultado && resultado.tipo === 'toast_erro'){ 
                   var msgLower = resultado.texto.toLowerCase();
@@ -782,7 +831,7 @@
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
-    var idf= await waitForVisible('#Identidade', 10000);
+    var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
     await delay(1500); 
 
     if(idf){
@@ -798,7 +847,7 @@
         await delay(1500);
     }
 
-    var oe = getVisible('#OrgaoEmissor');
+    var oe = getVisible('#OrgaoEmissor, #TransportadorTac_OrgaoEmissor, input[name*="OrgaoEmissor"], select[name*="OrgaoEmissor"]');
     if(oe){
         oe.value='SSP';
         oe.dispatchEvent(new Event('change',{bubbles:true}));
@@ -807,7 +856,7 @@
     await delay(500);
 
     if(d.uf){
-        var uf = getVisible('#UfIdentidade');
+        var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
         if(uf){
             uf.value=d.uf.toUpperCase();
             uf.dispatchEvent(new Event('change',{bubbles:true}));
