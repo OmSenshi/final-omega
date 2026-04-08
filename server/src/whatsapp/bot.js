@@ -1,5 +1,5 @@
-// src/whatsapp/bot.js — Final Omega v5.1: WhatsApp Maestro (Sunshine Edition)
-// Templates Exatos, Regex Inteligente de Extração, Suporte a Novos Nomes
+// src/whatsapp/bot.js — Final Omega v5.2: WhatsApp Maestro (Sunshine Edition)
+// Anti-Asterisk Parser, Strict Formats, Robust Veiculo Regex
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -99,7 +99,7 @@ const TEMPLATES_MAP = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// PARSER INTELIGENTE (Regex focado no conteúdo após os dois-pontos)
+// PARSER INTELIGENTE (Limpeza de Asteriscos)
 // ═══════════════════════════════════════════════════════════════
 
 function parseFilledTemplate(body) {
@@ -115,9 +115,10 @@ function parseFilledTemplate(body) {
   const blocoTransp = parts[0] || '';
   const blocosVeiculos = parts.slice(1);
 
-  // Extrator mestre: Busca o padrão Ex: "RG: 1234" e ignora emojis/asteriscos.
+  // Extrator mestre: Remove os asteriscos antes de buscar o regex!
   const extract = (texto, regex) => {
-    const match = texto.match(regex);
+    const cleanText = texto.replace(/\*/g, ''); 
+    const match = cleanText.match(regex);
     return match && match[1] && match[1].trim() !== '' ? match[1].trim() : '';
   };
 
@@ -128,7 +129,7 @@ function parseFilledTemplate(body) {
 
   const veiculos = blocosVeiculos.map(bloco => {
     return {
-      tipo_veiculo: extract(bloco, /Tipo Veiculo.*?:?\s*(Proprio|Terceiro|Nao)/i) || 'proprio',
+      tipo_veiculo: extract(bloco, /Tipo Veiculo.*?:\s*(Proprio|Terceiro|Nao)/i) || 'proprio',
       placa: extract(bloco, /Placa:\s*([A-Za-z0-9\-]+)/i),
       renavam: extract(bloco, /Renavam:\s*([\d]+)/i),
       cpf_arrendante: extract(bloco, /Arrendante.*?:?\s*([\d\.\-\/]+)/i),
@@ -246,7 +247,7 @@ const pendingDocs = new Map();
 
 client.on('qr', qr => { console.log('\n  ═══ ESCANEIE O QR CODE ═══'); qrcode.generate(qr, { small: true }); });
 client.on('ready', async () => {
-  console.log('  ✓ WhatsApp Bot v5.1 conectado!');
+  console.log('  ✓ WhatsApp Bot v5.2 conectado!');
   const chats = await client.getChats();
   const group = chats.find(c => c.isGroup && c.name === GROUP_NAME);
   if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); }
@@ -265,7 +266,6 @@ client.on('message_create', async msg => {
   const chatId = msg.fromMe ? msg.to : msg.from;
   if (chatId !== targetGroupId) return;
 
-  // Anti-loop
   if (msg.fromMe) {
     const b = (msg.body || '').trim();
     if (b.startsWith('🔍') || b.startsWith('✅') || b.startsWith('❌') || b.startsWith('⚠️') ||
@@ -274,7 +274,6 @@ client.on('message_create', async msg => {
   }
 
   try {
-    // ── Documento ──
     if (msg.hasMedia) {
       const media = await msg.downloadMedia();
       if (!media) { await msg.reply('❌ Nao consegui baixar.'); return; }
@@ -297,13 +296,11 @@ client.on('message_create', async msg => {
     const text = (msg.body || '').trim();
     const textLow = text.toLowerCase();
 
-    // ── Comandos de template ──
     if (TEMPLATES_MAP[textLow]) { await msg.reply(TEMPLATES_MAP[textLow]); return; }
 
-    // ── Ajuda ──
     if (textLow === '/ajuda' || textLow === '/help') {
       await msg.reply(
-        '*Omega Bot v5.1 (Sunshine)*\n\n' +
+        '*Omega Bot v5.2 (Sunshine)*\n\n' +
         '📋 *Comandos:*\n' +
         '!cadcpf — Cadastro CPF\n' +
         '!cadcnpj — Cadastro CNPJ\n' +
@@ -315,7 +312,6 @@ client.on('message_create', async msg => {
       return;
     }
 
-    // ── Status ──
     if (textLow === '/status') {
       try {
         const dr = await fetch(SERVER_URL + '/api/devices');
@@ -326,18 +322,16 @@ client.on('message_create', async msg => {
         let txt = '*[STATUS OMEGA]*\n\n';
         txt += '📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n';
         txt += '⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n';
-        txt += '🤖 *Versao:* 5.1 (Sunshine Edition)';
+        txt += '🤖 *Versao:* 5.2 (Sunshine Edition)';
         await msg.reply(txt);
       } catch(e) { await msg.reply('📊 Erro ao consultar.'); }
       return;
     }
 
-    // ── Template preenchido ──
     if (text.toUpperCase().startsWith('[OMEGA')) {
       const task = parseFilledTemplate(text);
       if (!task) { await msg.reply('❌ Formato invalido. Use !cadcpf pra ver o modelo.'); return; }
 
-      // Resumo antes de enviar
       let resumo = '📋 *Tarefa detectada:* ' + task.modo.toUpperCase() + '\n';
       if (task.veiculos && task.veiculos.length > 0) {
         resumo += '🚗 *Veiculos:* ' + task.veiculos.length + ' (' + task.veiculos.map(v => v.placa).join(', ') + ')\n';
@@ -358,7 +352,6 @@ client.on('message_create', async msg => {
       return;
     }
 
-    // ── Código de salvamento ──
     if (text.match(/^[A-Z0-9]{3,30}$/i) && pendingDocs.has(targetGroupId)) {
       const code = text.toUpperCase();
       const state = pendingDocs.get(targetGroupId);
@@ -380,10 +373,6 @@ client.on('message_create', async msg => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// FUNÇÕES EXPORTADAS
-// ═══════════════════════════════════════════════════════════════
-
 async function sendToGroup(text) {
   if (!botReady || !targetGroupId) return false;
   try { await client.sendMessage(targetGroupId, text); return true; } catch { return false; }
@@ -394,7 +383,6 @@ async function sendFileToGroup(filepath, caption) {
 }
 async function sendError(message, step) { return sendToGroup('⚠️ *Erro*\nEtapa: ' + (step||'?') + '\n' + message); }
 
-// ── Erro fatal formatado (pedido bloqueado) ──
 async function sendBloqueio(detalhes) {
   const msg =
     '❌ *BLOQUEIO DE PEDIDO DETECTADO*\n' +
@@ -417,7 +405,7 @@ async function sendDocuments() {
 }
 
 function startBot() {
-  console.log('\n  Omega WhatsApp Bot v5.1 (Sunshine)');
+  console.log('\n  Omega WhatsApp Bot v5.2 (Sunshine)');
   console.log('  Grupo: ' + GROUP_NAME);
   client.initialize();
 }
