@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v9.1 (Sunshine Edition)
-// ViaCEP Waiter, Humanized Address, CPF Contacts Added, Anti-Cache
+// bridge.js — Final Omega v9.2 (Sunshine Edition)
+// Active Bootbox Hunter, Contact Duplication Check, Save Button Forcer
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -8,6 +8,9 @@
   function gmGet(k,d){ return (typeof GM_getValue!=='undefined') ? GM_getValue(k,d) : ''; }
   function gmSet(k,v){ try{ if(typeof GM_setValue!=='undefined') GM_setValue(k,v); }catch(e){} }
 
+  // ══════════════════════════════════════════════════════════════
+  // RADAR DE VISIBILIDADE, ESPERAS E ANIQUILAÇÃO NUCLEAR DE TOASTS
+  // ══════════════════════════════════════════════════════════════
   function getVisible(selector) {
       var els = document.querySelectorAll(selector);
       for(var i=0; i<els.length; i++) { if (els[i].offsetParent !== null) return els[i]; }
@@ -469,7 +472,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PREENCHIMENTO DE DADOS (CPF, CNPJ, Endereço, Contato, Gestor)
+  // PREENCHIMENTO DE DADOS
   // ══════════════════════════════════════════════════════════════
 
   async function preencherEndereco(d, tipoDefault){
@@ -497,7 +500,6 @@
     }
     await delay(1500); 
 
-    // DIGITAÇÃO DO CEP E ESPERA DO VIACEP
     if(cf){ 
         cf.removeAttribute('disabled');
         cf.focus();
@@ -507,14 +509,11 @@
         });
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = unsafeWindow.jQuery; if(jq) jq(cf).trigger('blur');
-        
-        // Aguarda o AJAX do ViaCEP terminar antes de continuar digitando
-        await delay(1000);
+        await delay(500);
         await waitBlockUI(10000); 
         await delay(1000);
     }
 
-    // DIGITAÇÃO HUMANIZADA DOS CAMPOS APÓS O VIACEP
     var f = getVisible('#Logradouro'); 
     if(f){ 
         f.removeAttribute('disabled'); f.focus();
@@ -559,11 +558,24 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
-    if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
+    else { log('Botao de salvar endereco nao encontrado', 'err'); }
   }
 
   async function adicionarContato(tipo,valor){
     await abrirAba('a.contatos, a[href="#contatos"]', '#ContatoPedidoPanel, [data-action*="ContatoPedido/Novo"]');
+
+    // CHECAGEM DE DUPLICIDADE
+    var panel = getVisible('#ContatoPedidoPanel');
+    if(panel) {
+        var str = panel.innerText.toLowerCase();
+        if ((tipo === '1' || tipo === '2') && (str.indexOf('telefone') !== -1 || str.indexOf('celular') !== -1 || str.indexOf('(00) 0000-0000') !== -1)) {
+            log('Telefone/Celular ja existe. Pulando.', 'warn'); return true;
+        }
+        if (tipo === '4' && (str.indexOf('email') !== -1 || str.indexOf('@') !== -1)) {
+            log('Email ja existe. Pulando.', 'warn'); return true;
+        }
+    }
 
     var btn = getVisible('[data-action*="ContatoPedido/Novo"]');
     if(!btn) return false;
@@ -594,7 +606,7 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar-contato, .modal .btn-primary');
-    if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
 
     var err = getVisible('.validation-summary-errors, .alert-danger, .field-validation-error');
     if(err){
@@ -654,7 +666,7 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
-    if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
   }
 
   async function preencherRT(){
@@ -693,7 +705,7 @@
 
     limparToasts();
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary');
-    if(bs){ bs.click(); await waitBlockUI(10000); await delay(1000); }
+    if(bs){ bs.removeAttribute('disabled'); bs.click(); await waitBlockUI(10000); await delay(1000); }
   }
 
   function gerarEmailAleatorio(){var c='abcdefghijklmnopqrstuvwxyz0123456789',s='';for(var i=0;i<12;i++)s+=c[Math.floor(Math.random()*c.length)];return s+'@yahoo.com';}
@@ -750,16 +762,31 @@
     
     enviarStatus('running','Aguardando ANTT (Dados)...',{step:'veiculo_wait'});
     await delay(1000); 
-    await waitBlockUI(15000); 
-    await delay(1500); 
+    
+    // CAÇADOR DE BOOTBOX (Movimentacao de Frota)
+    var waitLimit = 0;
+    while(waitLimit < 30) {
+        var bb = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
+        if (bb) {
+            log('Modal de movimentacao detectado. Confirmando...', 'warn');
+            bb.click();
+            await delay(1500);
+        }
 
-    var tara = getVisible('#Tara');
-    if(tara && (!tara.value || tara.value.trim() === '')) {
-        tara.removeAttribute('disabled');
-        tara.value = '2';
-        tara.dispatchEvent(new Event('input',{bubbles:true}));
-        tara.dispatchEvent(new Event('change',{bubbles:true}));
-        var jq = unsafeWindow.jQuery; if(jq) jq(tara).trigger('change');
+        var tara = getVisible('#Tara');
+        var uiBlock = document.querySelector('.blockUI');
+        if (tara && !tara.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
+        await delay(1000);
+        waitLimit++;
+    }
+
+    var taraEl = getVisible('#Tara');
+    if(taraEl && (!taraEl.value || taraEl.value.trim() === '')) {
+        taraEl.removeAttribute('disabled');
+        taraEl.value = '2';
+        taraEl.dispatchEvent(new Event('input',{bubbles:true}));
+        taraEl.dispatchEvent(new Event('change',{bubbles:true}));
+        var jq = unsafeWindow.jQuery; if(jq) jq(taraEl).trigger('change');
     }
 
     var eixos = getVisible('#Eixos');
@@ -779,8 +806,8 @@
     else { throw new Error('Botao salvar nao encontrado'); }
 
     await delay(1000);
-    var bb = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
-    if(bb) { bb.click(); await delay(1500); }
+    var bbFinal = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
+    if(bbFinal) { bbFinal.click(); await delay(1500); }
 
     await waitBlockUI(10000); await delay(1000);
   }
@@ -906,7 +933,6 @@
 
     await preencherEndereco(d, 'RES'); 
     
-    // Contatos aleatórios para suprir a obrigação da ANTT no CPF
     var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
     var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
     
