@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v8.4 (Sunshine Edition)
-// Multi-Target Selectors (TAC/ETC), Term Acceptance, Nuclear Toast Sweeper
+// bridge.js — Final Omega v9.0 (Cache Breaker Edition)
+// Multi-Target Selectors (TAC/ETC), Tab Transp Force Focus, Anti-Cache
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -831,6 +831,13 @@
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
     
+    // Força a aba Transportador estar ativa caso o navegador tenha salvo outra
+    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') {
+        tabTransp.click();
+        await delay(1000);
+    }
+
     var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
     await delay(1500); 
 
@@ -872,6 +879,12 @@
   async function fluxoCadastroCNPJ(task){
     enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
     
+    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') {
+        tabTransp.click();
+        await delay(1000);
+    }
+
     var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
     if(cap){
         var jq = unsafeWindow.jQuery; 
