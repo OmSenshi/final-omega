@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v13.0 (Sunshine Ultimate Edition)
-// Native iCheck, Smart Mask Typing, 200ms Modal Sync, ViaCEP Master Logic
+// bridge.js — Final Omega v14.0 (Sunshine Ultimate Edition)
+// Mutation Observer ViaCEP, Phantom Char Vaccine, Native Mask Typing
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -67,35 +67,36 @@
       document.querySelectorAll('#toast-container, .toast, .toast-success, .toast-error, .toast-warning').forEach(function(t){ t.remove(); });
   }
 
-  // MURALHA DE MODAIS (MICRO-POLLING 200ms)
   async function aguardarModalFechar() {
       await delay(200);
       var limit = 0;
-      while (getVisible('.modal.show, .modal.in') && limit < 50) { // 10 segundos max
-          await delay(200);
-          limit++;
+      while (getVisible('.modal.show, .modal.in') && limit < 50) { 
+          await delay(200); limit++;
       }
       limparToasts();
       await delay(300);
   }
 
-  // DIGITAÇÃO NATIVA COM EVENTOS DE TECLADO (Garante o funcionamento das máscaras)
+  // DIGITAÇÃO NATIVA BLINDADA CONTRA CARACTERES FANTASMAS
   async function digitarMascara(el, texto, speed) {
       var U_local = window.OmegaUtils || null;
+      var cleanTexto = (texto || '').replace(/[\u200B-\u200D\uFEFF]/g, ''); // Arranca espaços invisíveis
       if (U_local && U_local.digitarCharAChar) {
-          await new Promise(function(resolve) { U_local.digitarCharAChar(el, texto, {delay: speed || 60, onDone: resolve}); });
+          await new Promise(function(resolve) { U_local.digitarCharAChar(el, cleanTexto, {delay: speed || 60, onDone: resolve}); });
       } else {
           el.value = ''; el.focus(); var i = 0;
           await new Promise(function(resolve) {
               function next() {
-                  if (i >= texto.length) { el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return resolve(); }
-                  el.value = texto.substring(0, i + 1); el.dispatchEvent(new Event('input',{bubbles:true}));
+                  if (i >= cleanTexto.length) { el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return resolve(); }
+                  el.value = cleanTexto.substring(0, i + 1); el.dispatchEvent(new Event('input',{bubbles:true}));
                   i++; nativeSetTimeout(next, speed || 60);
               }
               next();
           });
       }
   }
+
+  function typeSlowly(el, text, ms) { return digitarMascara(el, text, ms); }
 
   async function abrirAba(seletorAba, seletorPainel) {
       var aba = document.querySelector(seletorAba);
@@ -374,6 +375,49 @@
     }catch(e){ enviarStatus('error_critical','Fatal: '+e.message); log('FATAL: '+e.message,'err'); }
   }
 
+  function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
+
+  // ══════════════════════════════════════════════════════════════
+  // MÁQUINA DE RESGATE
+  // ══════════════════════════════════════════════════════════════
+  async function executarResgateNaPagina(cpfCnpj, task) {
+    try {
+      enviarStatus('running', 'Processando resgate...', {step:'resgate_ok'});
+      var selDoc = await waitForElement('#CpfCnpjTransportadorCertificado', 10000);
+      var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery;
+      for(var i=0;i<selDoc.options.length;i++){ if(selDoc.options[i].value.replace(/\D/g,'').indexOf(cpfCnpj.replace(/\D/g,''))!==-1){ selDoc.value=selDoc.options[i].value; if(jq)jq(selDoc).trigger('change');else selDoc.dispatchEvent(new Event('change',{bubbles:true})); break; } }
+      await delay(500);
+      var selSit = document.getElementById('SituacaoPedido'); if(selSit){selSit.value='CAD';selSit.dispatchEvent(new Event('change',{bubbles:true}));} await delay(300);
+      var btnConsultar = document.querySelector('.btn-consultar, button.btn-blue'); if(btnConsultar) btnConsultar.click(); await delay(3000);
+      
+      var rows = document.querySelectorAll('table tbody tr, .table tbody tr'); var encontrou = false;
+      for(var r=0;r<rows.length;r++){
+        if((rows[r].textContent||'').indexOf('EM CADASTRAMENTO') === -1) continue;
+        var btnEditar = rows[r].querySelector('a[title="Editar"]');
+        if(btnEditar){
+            var href = btnEditar.getAttribute('href');
+            if (href && href !== 'undefined' && href.trim() !== '') {
+                salvarEstado('tarefa_pendente_navegacao', task);
+                window.location.href = href.startsWith('http') ? href : 'https://rntrcdigital.antt.gov.br' + href;
+                encontrou = true; break;
+            } else {
+                salvarEstado('tarefa_pendente_navegacao', task);
+                btnEditar.click(); 
+                encontrou = true; break;
+            }
+        }
+        var btnHist = rows[r].querySelector('a[title="Histórico"], a[data-toggle-modal="true"], .fa-inbox');
+        if(btnHist){
+          if(btnHist.tagName === 'I') btnHist = btnHist.closest('a'); if(btnHist) btnHist.click(); await delay(2000);
+          var detalhes = {dataHora:'?',situacao:'?',usuario:'?',nome:'?',entidade:'?'};
+          try{ var lis = document.querySelectorAll('.modal-body li'); lis.forEach(function(li){ var label = (li.childNodes[0]||{}).textContent||''; var valor = (li.querySelector('span')||li.querySelector('p')||{}).textContent||''; if(label.indexOf('Data')!==-1) detalhes.dataHora = valor.trim(); else if(label.indexOf('Situa')!==-1) detalhes.situacao = valor.trim(); else if(label.indexOf('Usu')!==-1) detalhes.usuario = valor.trim(); else if(label.indexOf('Nome')!==-1) detalhes.nome = valor.trim(); }); }catch(e){}
+          enviarStatus('erro_fatal','Pedido bloqueado por: '+(detalhes.nome||detalhes.usuario),{detalhes:detalhes}); encontrou = true; limparEstado(); break;
+        }
+      }
+      if(!encontrou) { enviarStatus('error','Nenhum pedido em cadastramento encontrado.'); limparEstado(); }
+    } catch(e) { enviarStatus('error','Falha no resgate: '+e.message); limparEstado(); }
+  }
+
   async function iniciarPedidoCadastro(task) {
       enviarStatus('running', 'Selecionando Perfil...', {step:'iniciar_pedido'});
       var doc = getTargetDoc(task); 
@@ -414,12 +458,7 @@
           jq('.modal input[type="checkbox"]').each(function(){
               if(!jq(this).parent().hasClass('checked')){
                   jq(this).iCheck('check');
-                  jq(this).trigger('change');
               }
-          });
-      } else {
-          document.querySelectorAll('.modal input[type="checkbox"]').forEach(function(cb) {
-              if(!cb.checked) { cb.click(); cb.checked = true; cb.dispatchEvent(new Event('change', {bubbles:true})); }
           });
       }
   }
@@ -450,30 +489,54 @@
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
 
+    // O RADAR INSTANTANEO DO VIACEP (Mutation Observer)
+    async function esperarViaCEP() {
+        return new Promise(function(resolve) {
+            var blkAppeared = false;
+            var timer = nativeSetTimeout(function() {
+                if(obs) obs.disconnect(); resolve();
+            }, 8000);
+            
+            var obs = new MutationObserver(function() {
+                var cid = document.getElementById('DescricaoCidade');
+                var blk = document.querySelector('.blockUI');
+                var isBlk = blk && blk.style.display !== 'none';
+                if (isBlk) blkAppeared = true;
+                if (cid && cid.innerText.trim() !== '' && !isBlk && blkAppeared) {
+                    nativeClearTimeout(timer); obs.disconnect(); resolve();
+                }
+            });
+            obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+            
+            // Trava extra para conexoes relampago
+            nativeSetTimeout(function(){
+                var cid = document.getElementById('DescricaoCidade');
+                var blk = document.querySelector('.blockUI');
+                if (cid && cid.innerText.trim() !== '' && (!blk || blk.style.display === 'none')) {
+                     nativeClearTimeout(timer); obs.disconnect(); resolve();
+                }
+            }, 3000);
+        });
+    }
+
     async function injetarCepEValidar(cepParaDigitar) {
         if(cf){ 
             cf.removeAttribute('disabled');
             await digitarMascara(cf, cepParaDigitar, 60);
             
-            cf.dispatchEvent(new Event('blur',{bubbles:true}));
-            var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(cf).trigger('blur');
-            
-            // GATILHO FISICO PARA O VIACEP
             var logTrigger = getVisible('#Logradouro');
             if (logTrigger) { logTrigger.focus(); logTrigger.click(); }
-            
-            await delay(1000); 
-            var limit = 0;
-            while(limit < 50) { // 10 segundos max
-                var blk = document.querySelector('.blockUI');
-                if(!blk || blk.style.display === 'none') break;
-                await delay(200); limit++;
+            else {
+                cf.dispatchEvent(new Event('blur',{bubbles:true}));
+                var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(cf).trigger('blur');
             }
-            await delay(500); 
+            
+            await delay(300); // Tempo para o AJAX iniciar
+            await esperarViaCEP();
+            await delay(500); // Respiro de estabilizacao do DOM
         }
     }
 
-    // Seleciona Tipo (COM/RES)
     var selTipo = getVisible('#CodigoTipoEndereco');
     if(selTipo) {
         var valToSelect = '';
@@ -486,7 +549,6 @@
 
     if(cep) await injetarCepEValidar(cep);
 
-    // VALIDADOR SUPREMO DE CIDADE (Garante que o ViaCEP buscou)
     var municipioEl = document.getElementById('DescricaoCidade');
     if (!municipioEl || municipioEl.innerText.trim() === '') {
         log('ViaCEP falhou ou CEP vazio. Acionando Fallback...', 'warn');
@@ -497,23 +559,14 @@
         await injetarCepEValidar(cepEmergencia);
     }
 
-    // Só preenche o resto depois que o ViaCEP acalmou
     await injetarDadosHumanizadosEndereco(d);
-    await delay(1000);
+    await delay(500);
 
     var me = getVisible('#MesmoEndereco, #mesmoEndereco');
     if(me){ 
         var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery;
         if(jq) { jq(me).iCheck('check'); jq(me).trigger('change'); }
         else { if(!me.checked) me.click(); me.checked = true; me.dispatchEvent(new Event('change',{bubbles:true})); }
-        
-        await delay(1000);
-        // Checagem de Teimosia: A ANTT apagou?
-        var fCheck = getVisible('#Logradouro');
-        if (fCheck && fCheck.value.trim() === '') {
-            log('Checkbox apagou os dados! Re-injetando...', 'warn');
-            await injetarDadosHumanizadosEndereco(d);
-        }
     }
 
     var bs = getVisible('.modal .btn-salvar, .modal .btn-primary, [data-action*="Salvar"]');
@@ -624,7 +677,7 @@
     await delay(1500);
 
     if(cf){
-        cf.removeAttribute('disabled');
+        cf.removeAttribute('disabled'); 
         await digitarMascara(cf, cpfRT, 70);
         cf.dispatchEvent(new Event('blur',{bubbles:true}));
         var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(cf).trigger('blur');
@@ -992,8 +1045,8 @@
     if(U){U.injetarData('DataInicio',di);U.injetarData('DataFim',df);}await delay(500);
     
     var c1=document.getElementById('ExisteContrato'),c2=document.getElementById('InformacoesVerdadeiras');
-    if(c1){c1.checked=true;c1.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c1).trigger('change');}
-    if(c2){c2.checked=true;c2.dispatchEvent(new Event('change',{bubbles:true}));if(jq)jq(c2).trigger('change');}await delay(500);
+    if(c1){c1.click(); c1.checked=true; c1.dispatchEvent(new Event('change',{bubbles:true})); if(jq)jq(c1).trigger('change');}
+    if(c2){c2.click(); c2.checked=true; c2.dispatchEvent(new Event('change',{bubbles:true})); if(jq)jq(c2).trigger('change');}await delay(500);
     
     var targetDoc = getTargetDoc(task);
     var cpfArrendatario = (arr.cpf_arrendatario || targetDoc || '').replace(/\D/g,'');
