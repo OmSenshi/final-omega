@@ -1,4 +1,4 @@
-// src/whatsapp/bot.js — Final Omega v7.0: WhatsApp Maestro (Comando Parar & Queue Fix)
+// src/whatsapp/bot.js — Final Omega v7.1: WhatsApp Maestro (Phantom Char Killer)
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -26,8 +26,9 @@ const TEMPLATES_MAP = { '!cadcpf': TEMPLATE_CADCPF, '!cadcnpj': TEMPLATE_CADCNPJ
 
 function extractByPrefix(lines, prefix) {
   for (let line of lines) {
-      let noAst = line.replace(/\*/g, '').trim(); 
-      let cleanLine = noAst.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{2B50}\u{200B}-\u{200D}]+\s*/u, ''); 
+      // PULVERIZA ASTERISCOS E CARACTERES INVISÍVEIS DO COPIAR/COLAR (Zero-width space)
+      let cleanLine = line.replace(/[\*\u200B-\u200D\uFEFF]/g, '').trim(); 
+      cleanLine = cleanLine.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{2B50}]+\s*/u, ''); 
       if (cleanLine.toLowerCase().startsWith(prefix.toLowerCase())) {
           let idx = cleanLine.indexOf(':');
           if (idx !== -1) return cleanLine.substring(idx + 1).trim();
@@ -98,7 +99,7 @@ const client = new Client({ authStrategy: new LocalAuth({ dataPath: SESSION_DIR 
 let targetGroupId = null, botReady = false; const pendingDocs = new Map();
 
 client.on('qr', qr => { console.log('\n  ═══ ESCANEIE O QR CODE ═══'); qrcode.generate(qr, { small: true }); });
-client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v7.0 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
+client.on('ready', async () => { console.log('  ✓ WhatsApp Bot v7.1 conectado!'); const chats = await client.getChats(); const group = chats.find(c => c.isGroup && c.name === GROUP_NAME); if (group) { targetGroupId = group.id._serialized; console.log('  ✓ Grupo: ' + GROUP_NAME); } else console.log('  ✗ Grupo "' + GROUP_NAME + '" nao encontrado'); botReady = true; });
 client.on('auth_failure', msg => console.error('  ✗ Auth:', msg)); client.on('disconnected', reason => { console.log('  ✗ Desconectado:', reason); setTimeout(() => client.initialize(), 5000); });
 
 client.on('message_create', async msg => {
@@ -107,7 +108,6 @@ client.on('message_create', async msg => {
   try {
     const text = (msg.body || '').trim(); const textLow = text.toLowerCase();
 
-    // COMANDO DE PARADA DE EMERGÊNCIA
     if (textLow === '/parar' || textLow === '!parar') {
         pendingDocs.delete(targetGroupId);
         await pararTarefasServidor();
@@ -116,8 +116,8 @@ client.on('message_create', async msg => {
     }
 
     if (TEMPLATES_MAP[textLow]) { await msg.reply(TEMPLATES_MAP[textLow]); return; }
-    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v7.0*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n/parar — Cancela a fila e para o bot na hora\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
-    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 7.0'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
+    if (textLow === '/ajuda' || textLow === '/help') { await msg.reply('*Omega Bot v7.1*\n\n📋 *Comandos:*\n!cadcpf — Cadastro CPF\n!cadcnpj — Cadastro CNPJ\n!inclusao — Inclusao avulsa\n!arrendamento — Arrendamento\n/status — Status\n/parar — Cancela a fila e para o bot na hora\n\n📄 Envie documentos e depois um CODIGO pra salvar.'); return; }
+    if (textLow === '/status') { try { const dr = await fetch(SERVER_URL + '/api/devices'); const dd = await dr.json(); const qr = await fetch(SERVER_URL + '/api/task/queue'); const qd = await qr.json(); const devs = dd.devices || []; let txt = '*[STATUS OMEGA]*\n\n📱 *Celular:* ' + (devs.length > 0 ? devs.map(d => d.name + ' (' + d.status + ')').join(', ') : 'Nenhum') + '\n⏳ *Fila:* ' + (qd.size || 0) + ' tarefa(s)\n🤖 *Versao:* 7.1'; await msg.reply(txt); } catch(e) { await msg.reply('📊 Erro ao consultar.'); } return; }
     
     if (text.toUpperCase().startsWith('[OMEGA')) {
       const task = parseFilledTemplate(text); if (!task) { await msg.reply('❌ Formato invalido. Use !cadcpf pra ver o modelo.'); return; }
@@ -138,6 +138,5 @@ async function sendToGroup(text) { if (!botReady || !targetGroupId) return false
 async function sendFileToGroup(filepath, caption) { if (!botReady || !targetGroupId || !fs.existsSync(filepath)) return false; try { const m = MessageMedia.fromFilePath(filepath); await client.sendMessage(targetGroupId, m, { caption }); return true; } catch { return false; } }
 async function sendError(message, step) { return sendToGroup('⚠️ *Erro*\nEtapa: ' + (step||'?') + '\n' + message); }
 async function sendBloqueio(detalhes) { const msg = '❌ *BLOQUEIO DE PEDIDO DETECTADO*\nO cliente esta com pedido aberto em outro ponto.\n\n📋 *DETALHES:*\n🗓️ *Data/Hora:* ' + (detalhes.dataHora || '?') + '\n🔄 *Situacao:* ' + (detalhes.situacao || '?') + '\n👤 *Usuario:* ' + (detalhes.usuario || '?') + '\n📛 *Nome:* ' + (detalhes.nome || '?') + '\n🏢 *Entidade:* ' + (detalhes.entidade || '?') + '\n\n⚠️ *ACAO NECESSARIA:* Solicite o fechamento do pedido.'; return sendToGroup(msg); }
-async function sendDocuments() { const c = path.join(DOWNLOAD_DIR, 'Carteirinha.pdf'); const e = path.join(DOWNLOAD_DIR, 'Extrato.pdf'); if (fs.existsSync(c)) await sendFileToGroup(c, '✅ Carteirinha RNTRC'); if (fs.existsSync(e)) await sendFileToGroup(e, '✅ Extrato RNTRC'); }
-function startBot() { console.log('\n  Omega WhatsApp Bot v7.0'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
-module.exports = { startBot, sendToGroup, sendFileToGroup, sendError, sendBloqueio, sendDocuments };
+function startBot() { console.log('\n  Omega WhatsApp Bot v7.1'); console.log('  Grupo: ' + GROUP_NAME); client.initialize(); }
+module.exports = { startBot, sendToGroup, sendFileToGroup, sendError, sendBloqueio };
