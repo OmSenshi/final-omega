@@ -2,7 +2,7 @@
 // @name         Final Omega v14.0 Sunshine
 // @namespace    https://github.com/OmSenshi/final-omega
 // @version      14.0
-// @description  Automacao ANTT — Bolinha Inteligente e Limpa
+// @description  Automacao ANTT — Sunshine Ultimate Edition
 // @author       Omega
 // @match        https://rntrcdigital.antt.gov.br/*
 // @match        https://sso.acesso.gov.br/*
@@ -12,8 +12,6 @@
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @connect      omhk.com.br
-// @connect      *
 // @run-at       document-end
 //
 // @require      https://raw.githubusercontent.com/OmSenshi/final-omega/main/tampermonkey/core.js
