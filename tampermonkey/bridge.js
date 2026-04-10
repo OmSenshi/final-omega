@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v14.0 (Sunshine Ultimate Edition)
-// Mutation Observer ViaCEP, Phantom Char Vaccine, Native Mask Typing
+// bridge.js — Final Omega v14.1 (Sunshine Ultimate Fix)
+// Inclusao Silent Stop Fix, GovBr Login Restore, Smart Button Hunter
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -115,10 +115,9 @@
       await delay(300);
   }
 
-  // DIGITAÇÃO NATIVA BLINDADA CONTRA CARACTERES FANTASMAS
   async function digitarMascara(el, texto, speed) {
       var U_local = window.OmegaUtils || null;
-      var cleanTexto = (texto || '').replace(/[\u200B-\u200D\uFEFF]/g, ''); // Arranca espaços invisíveis
+      var cleanTexto = (texto || '').replace(/[\u200B-\u200D\uFEFF]/g, ''); 
       if (U_local && U_local.digitarCharAChar) {
           await new Promise(function(resolve) { U_local.digitarCharAChar(el, cleanTexto, {delay: speed || 60, onDone: resolve}); });
       } else {
@@ -285,64 +284,24 @@
 
   function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),s=document.getElementById('omega-bridge-stop');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';s.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';s.style.display='block';}else{c.style.display='block';p.style.display='none';s.style.display=VPS_URL?'block':'none';}}
 
+  // FIX: ROTEAMENTO DO LOGIN GOV.BR RESTAURADO
   function receberTarefa(msg){
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     var U = window.OmegaUtils || null;
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
+    
+    // Se a tarefa veio com Login/Senha da conta GOV
+    if(msg.credenciais && msg.credenciais.cpf && msg.credenciais.senha){
+      if(isANTT){ executarFluxo(msg); return; }
+      salvarEstado('login_govbr',msg);
+      processarLoginGovBr();
+      return;
+    }
+    
+    // Se veio vazia (já logado)
     executarFluxo(msg);
   }
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; }
-
-  // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE ESTADOS GOV.BR
-  // ══════════════════════════════════════════════════════════════
-  async function processarLoginGovBr(){
-    var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
-    var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
-    await delay(1000); 
-    try {
-        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
-        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
-        var senhaF = document.getElementById('password');
-        var cpfF = document.getElementById('accountId');
-
-        if(btnAuth) { log('OAuth — autorizando...','ok'); btnAuth.click(); return; }
-
-        if(btnSkipMfa) {
-            log('MFA — pulando...','warn'); btnSkipMfa.click(); await delay(1000);
-            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
-            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
-            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
-            if(bConf) bConf.click();
-            return;
-        }
-
-        if(senhaF) {
-            log('Tela Senha detectada','ok'); senhaF.focus();
-            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-            nativeInputValueSetter.call(senhaF, cred.senha);
-            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
-            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
-            await delay(500);
-            var btnE = document.getElementById('submit-button');
-            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
-            return;
-        }
-
-        if(cpfF) {
-            log('Tela CPF detectada','ok');
-            await digitarMascara(cpfF, cred.cpf.replace(/\D/g,''), 60); await delay(500);
-            var btnC = document.getElementById('enter-account-id');
-            if(btnC) btnC.click();
-            return;
-        }
-
-        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
-            log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
-            enviarStatus('error','Captcha detectado. Resolva manualmente.');
-        }
-    }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
-  }
 
   // ══════════════════════════════════════════════════════════════
   // ROTEADOR CENTRAL E EXECUÇÃO
@@ -381,9 +340,12 @@
       }
       
       var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorTac_Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
+      
+      // FIX: ROTEAMENTO DA INCLUSAO DENTRO DA PAGINA DO PEDIDO
       if (isFormulario) {
           if (task.modo === 'cadcpf' || (task.modo === 'cadastro' && task.tipo !== 'cnpj')) { await fluxoCadastroCPF(task); }
           else if (task.modo === 'cadcnpj' || (task.modo === 'cadastro' && task.tipo === 'cnpj')) { await fluxoCadastroCNPJ(task); }
+          else if (task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') { await processarVeiculos(task); } // Faltava esta linha!
           return;
       }
 
@@ -416,7 +378,7 @@
   function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE RESGATE
+  // MÁQUINA DE RESGATE E INÍCIO DE PEDIDO
   // ══════════════════════════════════════════════════════════════
   async function executarResgateNaPagina(cpfCnpj, task) {
     try {
@@ -474,8 +436,8 @@
           await delay(1500);
           var btnCriar = document.getElementById('btnCriarPedido') || document.querySelector('.btn-primary') || document.querySelector('button[type="submit"]');
           if(!btnCriar) {
-              var btns = document.querySelectorAll('button');
-              for(var b=0; b<btns.length; b++) { if(btns[b].textContent.indexOf('Criar Pedido') !== -1) { btnCriar = btns[b]; break; } }
+              var btns = document.querySelectorAll('button, a.btn');
+              for(var b=0; b<btns.length; b++) { if(btns[b].textContent.indexOf('Criar Pedido') !== -1 || btns[b].textContent.indexOf('Novo') !== -1) { btnCriar = btns[b]; break; } }
           }
           if(btnCriar) {
               salvarEstado('tarefa_pendente_navegacao', task);
@@ -527,7 +489,6 @@
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
 
-    // O RADAR INSTANTANEO DO VIACEP (Mutation Observer)
     async function esperarViaCEP() {
         return new Promise(function(resolve) {
             var blkAppeared = false;
@@ -546,7 +507,6 @@
             });
             obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
             
-            // Trava extra para conexoes relampago
             nativeSetTimeout(function(){
                 var cid = document.getElementById('DescricaoCidade');
                 var blk = document.querySelector('.blockUI');
@@ -569,9 +529,9 @@
                 var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(cf).trigger('blur');
             }
             
-            await delay(300); // Tempo para o AJAX iniciar
+            await delay(300);
             await esperarViaCEP();
-            await delay(500); // Respiro de estabilizacao do DOM
+            await delay(500); 
         }
     }
 
@@ -869,7 +829,16 @@
     for(var i=0; i<20; i++){
         formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
         if(formAberto) break;
-        btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
+        // FIX: BUSCADOR DE BOTÕES MAIS INTELIGENTE
+        btnCriar = getVisible('#btnCriarPedido, button[type="submit"], .btn-primary, a.btn-blue');
+        if (!btnCriar) {
+            var btns = document.querySelectorAll('button, a.btn');
+            for(var b=0; b<btns.length; b++) {
+                if(btns[b].textContent.indexOf('Criar Pedido') !== -1 || btns[b].textContent.indexOf('Novo') !== -1 || btns[b].textContent.indexOf('Adicionar') !== -1) {
+                    if(btns[b].offsetParent !== null) { btnCriar = btns[b]; break; }
+                }
+            }
+        }
         if(btnCriar) break;
         await delay(500);
     }
@@ -902,211 +871,6 @@
         return;
     }
     enviarStatus('error', 'Painel de frota nao carregou a tempo.');
-  }
-
-  // ══════════════════════════════════════════════════════════════
-  // OS FLUXOS PRINCIPAIS
-  // ══════════════════════════════════════════════════════════════
-  async function fluxoCadastroCPF(task){
-    enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
-    
-    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
-    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
-
-    var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
-    await delay(1500); 
-
-    if(idf){
-        idf.removeAttribute('disabled');
-        var num = (d.identidade||d.cnh||'000000').replace(/[^0-9a-zA-Z]/g,'');
-        if(!num) num = '000000';
-        await digitarMascara(idf, num, 60);
-        idf.dispatchEvent(new Event('blur',{bubbles:true}));
-        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(idf).trigger('blur');
-        await delay(1500);
-    }
-
-    var oe = getVisible('#OrgaoEmissor, #TransportadorTac_OrgaoEmissor, input[name*="OrgaoEmissor"], select[name*="OrgaoEmissor"]');
-    if(oe){ oe.value='SSP'; oe.dispatchEvent(new Event('change',{bubbles:true})); var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(oe).trigger('change'); }
-    await delay(500);
-
-    if(d.uf){
-        var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
-        if(uf){
-            var targetUf = d.uf.replace(/[^A-Za-z]/g, '').toUpperCase();
-            for(var i=0; i<uf.options.length; i++){
-                if(uf.options[i].value.toUpperCase() === targetUf){
-                    uf.selectedIndex = i; uf.value = uf.options[i].value; uf.dispatchEvent(new Event('change',{bubbles:true}));
-                    var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(uf).trigger('change'); break;
-                }
-            }
-        }
-    }
-    await delay(1000);
-
-    await preencherEndereco(d, 'RES'); 
-    if (paused) return;
-
-    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
-    if (paused) return;
-    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
-    if (paused) return;
-
-    await processarVeiculos(task);
-  }
-
-  async function fluxoCadastroCNPJ(task){
-    enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
-    
-    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
-    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
-
-    var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
-    if(cap){
-        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; 
-        if(jq) { jq(cap).iCheck('check'); jq(cap).trigger('change'); } 
-        else { cap.checked = true; cap.dispatchEvent(new Event('change',{bubbles:true})); cap.dispatchEvent(new Event('click',{bubbles:true})); }
-    }
-    
-    await preencherEndereco(d, 'COM');
-    if (paused) return;
-    
-    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
-    if (paused) return;
-    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
-    if (paused) return;
-    
-    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; 
-    if(cpfSocio) await preencherGestor(cpfSocio.replace(/\D/g,''));
-    if (paused) return;
-    
-    await preencherRT(); 
-    if (paused) return;
-
-    await processarVeiculos(task);
-  }
-
-  async function fluxoArrendamento(task){
-    enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
-    var U = window.OmegaUtils || null;
-    var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery;
-    
-    var cpfArrendanteOriginal = (arr.cpf_arrendante || arr.cpf_cnpj_proprietario || '').replace(/\D/g,'');
-    var nomeArrendante = (arr.nome_arrendante || '').toUpperCase();
-    var sel = await waitForVisible('#CPFCNPJArrendanteTransportador', 10000);
-
-    if (sel) {
-        for(var w=0; w<30; w++){ if(sel.options.length>1) break; await delay(500); }
-        var selecionou = false;
-        for(var i=0; i<sel.options.length; i++){
-            if(sel.options[i].value.replace(/\D/g,'')===cpfArrendanteOriginal || sel.options[i].text.replace(/\D/g,'')===cpfArrendanteOriginal){
-                if(jq) jq(sel).val(sel.options[i].value).trigger('change');
-                else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
-                selecionou = true; break;
-            }
-        }
-        if(!selecionou){
-            for(var i=0; i<sel.options.length; i++){
-                if(sel.options[i].text && sel.options[i].text.toLowerCase().indexOf('selecione') === -1){
-                    if(jq) jq(sel).val(sel.options[i].value).trigger('change');
-                    else { sel.value = sel.options[i].value; sel.dispatchEvent(new Event('change',{bubbles:true})); }
-                    break;
-                }
-            }
-        }
-    }
-    await delay(1500); 
-
-    if (cpfArrendanteOriginal || nomeArrendante) {
-        enviarStatus('running','Substituindo HTML...', {step: 'arrendamento_subst'});
-        var ap = null; var nt = document.getElementById('NomesTransportador');
-        if(nt && nt.value) { try { var jArr=JSON.parse(nt.value); if(jArr&&jArr[0]&&jArr[0].CpfCnpj) ap=jArr[0].CpfCnpj.replace(/\D/g,''); } catch(e){} }
-        if(!ap && U) ap = U.getDoc();
-
-        if(cpfArrendanteOriginal && ap && U){ U.substituirTudo(U.fAuto(ap), U.fAuto(cpfArrendanteOriginal)); U.substituirTudo(ap, cpfArrendanteOriginal); }
-        if(nomeArrendante && U){
-            var an = U.getNome(); if(an) U.substituirTudo(an, nomeArrendante);
-            var cv = document.getElementById('NomeArrendanteInput') || document.getElementById('NomeArrendante');
-            if(cv) { cv.removeAttribute('disabled'); cv.value = nomeArrendante; cv.setAttribute('disabled','disabled'); }
-        }
-        var novoJson = JSON.stringify([{"CpfCnpj":cpfArrendanteOriginal, "Nome":nomeArrendante}]);
-        if(nt) { nt.value = novoJson; nt.setAttribute('value', novoJson); }
-        ['Placa','Renavam','DataInicio','DataFim'].forEach(function(id){
-            var el = document.getElementById(id); if(el && el.getAttribute('cpfcnpjs')) el.setAttribute('cpfcnpjs',novoJson);
-        });
-
-        await delay(500);
-        var selRefresh = document.getElementById('CPFCNPJArrendanteTransportador');
-        if (selRefresh) {
-            for(var i=0; i<selRefresh.options.length; i++){
-                if(selRefresh.options[i].value.replace(/\D/g,'') === cpfArrendanteOriginal || selRefresh.options[i].text.replace(/\D/g,'') === cpfArrendanteOriginal){
-                    if(jq) jq(selRefresh).val(selRefresh.options[i].value).trigger('change');
-                    else { selRefresh.value = selRefresh.options[i].value; selRefresh.dispatchEvent(new Event('change',{bubbles:true})); }
-                    break;
-                }
-            }
-        }
-    }
-    await delay(1000);
-
-    var cp = await waitForVisible('#Placa', 5000);
-    if(cp){
-        cp.removeAttribute('disabled'); 
-        var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
-        await digitarMascara(cp, pLimpa, 80);
-        cp.dispatchEvent(new Event('blur',{bubbles:true}));
-    }
-    await delay(300);
-
-    var cr = document.getElementById('Renavam');
-    if(cr){
-        cr.removeAttribute('disabled'); cr.value = arr.renavam||'';
-        cr.dispatchEvent(new Event('input',{bubbles:true})); cr.dispatchEvent(new Event('change',{bubbles:true})); cr.dispatchEvent(new Event('blur',{bubbles:true}));
-    }
-    await delay(500);
-
-    enviarStatus('running','Verificando...', {step:'arrendamento_verificar'});
-    var bv = document.getElementById('verificar');
-    if(bv) {
-        bv.click();
-        var waitLimit = 0;
-        while(waitLimit < 30) {
-            var di = document.getElementById('DataInicio');
-            var uiBlock = document.querySelector('.blockUI');
-            if (di && !di.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) break;
-            await delay(1000); waitLimit++;
-        }
-    }
-    await delay(1000); 
-
-    var hj=new Date();var di=String(hj.getDate()).padStart(2,'0')+'/'+String(hj.getMonth()+1).padStart(2,'0')+'/'+hj.getFullYear();var fim=new Date(hj);fim.setFullYear(fim.getFullYear()+1);var df=String(fim.getDate()).padStart(2,'0')+'/'+String(fim.getMonth()+1).padStart(2,'0')+'/'+fim.getFullYear();
-    if(U){U.injetarData('DataInicio',di);U.injetarData('DataFim',df);}await delay(500);
-    
-    var c1=document.getElementById('ExisteContrato'),c2=document.getElementById('InformacoesVerdadeiras');
-    if(c1){c1.click(); c1.checked=true; c1.dispatchEvent(new Event('change',{bubbles:true})); if(jq)jq(c1).trigger('change');}
-    if(c2){c2.click(); c2.checked=true; c2.dispatchEvent(new Event('change',{bubbles:true})); if(jq)jq(c2).trigger('change');}await delay(500);
-    
-    var targetDoc = getTargetDoc(task);
-    var cpfArrendatario = (arr.cpf_arrendatario || targetDoc || '').replace(/\D/g,'');
-    if(cpfArrendatario){
-        var af = document.getElementById('CPFCNPJArrendatario') || document.querySelector('input[name*="CpfCnpjArrendatario"]');
-        if(af){
-            af.removeAttribute('disabled'); 
-            await digitarMascara(af, cpfArrendatario, 60);
-            af.dispatchEvent(new Event('blur',{bubbles:true}));
-            var btnBuscarArrendatario = document.getElementById('btnBuscarArrendatario'); 
-            if(btnBuscarArrendatario && getVisible('#btnBuscarArrendatario')) { btnBuscarArrendatario.click(); await delay(1000); }
-        }
-    }
-    await delay(1000);
-    limparToasts();
-
-    enviarStatus('running','Salvando...',{step:'arrendamento_salvar'}); var btnS=document.querySelector('#btnSalvar,.btn-salvarContrato');if(btnS)btnS.click();await delay(3000);
-    try{
-      await waitForURL('ContratoArrendamento/Index',15000);enviarStatus('done','Arrendamento OK!');
-      var returnUrl=gmGet('omega_return_url','');
-      if (returnUrl) { gmSet('omega_return_url',''); salvarEstado('tarefa_pendente_navegacao', task); window.location.href = returnUrl; }
-    }catch(e){enviarStatus('error','Arrendamento falhou.');}
   }
 
   function verificarEstadoPendente(){
