@@ -40,6 +40,44 @@
       });
   }
 
+  function waitForElement(selector, timeout) {
+      timeout = timeout || 30000;
+      return new Promise(function(resolve, reject) {
+          var el = document.querySelector(selector);
+          if (el) return resolve(el);
+          var obs = new MutationObserver(function() {
+              el = document.querySelector(selector);
+              if (el) { obs.disconnect(); nativeClearTimeout(t); resolve(el); }
+          });
+          obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+          var t = nativeSetTimeout(function() { obs.disconnect(); reject(new Error('Timeout: ' + selector)); }, timeout);
+      });
+  }
+
+  function waitForURL(substring, timeout) {
+      timeout = timeout || 60000;
+      return new Promise(function(resolve, reject) {
+          var t = nativeSetTimeout(function() { reject(new Error('Timeout URL: ' + substring)); }, timeout);
+          function check() { if (location.href.indexOf(substring) !== -1) { nativeClearTimeout(t); resolve(); return; } nativeSetTimeout(check, 500); }
+          check();
+      });
+  }
+
+  function waitForToastOrSuccess(successSelector, timeout) {
+      timeout = timeout || 15000;
+      return new Promise(function(resolve) {
+          var t = nativeSetTimeout(function() { resolve({ tipo: 'timeout' }); }, timeout);
+          function check() {
+              var toast = document.querySelector('#toast-container .toast-error');
+              if (toast && toast.offsetParent !== null) { nativeClearTimeout(t); resolve({ tipo: 'toast_erro', texto: toast.textContent || '' }); return; }
+              var ok = document.querySelector(successSelector);
+              if (ok && ok.offsetParent !== null) { nativeClearTimeout(t); resolve({ tipo: 'sucesso', el: ok }); return; }
+              nativeSetTimeout(check, 300);
+          }
+          check();
+      });
+  }
+
   function waitBlockUI(timeout) {
       timeout = timeout || 15000;
       return new Promise(function(resolve) {
@@ -232,7 +270,7 @@
 
   function conectar(){
     if(paused||!VPS_URL)return;if(ws){try{ws.close();}catch(e){}ws=null;}log('Conectando...','ok');
-    var wsUrl = VPS_URL.toLowerCase().trim(); if(wsUrl.indexOf('http')===0) wsUrl = wsUrl.replace(/^http/i, 'ws'); if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
+    var wsUrl = VPS_URL.trim(); if(wsUrl.indexOf('https://')===0) wsUrl = wsUrl.replace('https://','wss://'); else if(wsUrl.indexOf('http://')===0) wsUrl = wsUrl.replace('http://','ws://'); if(wsUrl.indexOf('/ws')===-1) wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
     var url=wsUrl+(VPS_TOKEN?((wsUrl.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(VPS_TOKEN)):'');
     try{ws=new WebSocket(url);}catch(e){log('URL invalida','err');return;}
     ws.onopen=function(){connected=true;resetBackoff();errorCount=0;if(!DEVICE_ID){DEVICE_ID='dev_'+Date.now()+'_'+Math.random().toString(36).substr(2,4);gmSet('omega_device_id',DEVICE_ID);}ws.send(JSON.stringify({type:'register',deviceId:DEVICE_ID,name:DEVICE_NAME}));log('Conectado','ok');atualizarUI();var U = window.OmegaUtils || null; if(U){U.box(document.getElementById('omega-bridge-status'),true,'Conectado!');}var fab=document.getElementById('omega-fab');if(fab)fab.classList.add('om-fab-connected');};
