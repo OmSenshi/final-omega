@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v14.1 (Sunshine Ultimate Fix)
-// Inclusao Silent Stop Fix, GovBr Login Restore, Smart Button Hunter
+// bridge.js — Final Omega v14.3 (Sunshine Ultimate Fix)
+// Bootbox Ghost Fix, Exact Button Sniper, Post-Save Verification
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -105,11 +105,18 @@
       document.querySelectorAll('#toast-container, .toast, .toast-success, .toast-error, .toast-warning').forEach(function(t){ t.remove(); });
   }
 
-  async function aguardarModalFechar() {
-      await delay(200);
+  async function aguardarModalFechar(contexto) {
+      await delay(500);
       var limit = 0;
       while (getVisible('.modal.show, .modal.in') && limit < 50) { 
           await delay(200); limit++;
+      }
+      if (getVisible('.modal.show, .modal.in')) {
+          var err = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, .modal.show .field-validation-error');
+          var msg = err ? err.textContent.trim().replace(/\s+/g, ' ') : 'O site travou ou ignorou o salvamento.';
+          var closeBtn = getVisible('.modal.show .close, .modal.show [data-dismiss="modal"]');
+          if (closeBtn) closeBtn.click(); 
+          throw new Error('Falha no ' + (contexto||'Modal') + ': ' + msg); 
       }
       limparToasts();
       await delay(300);
@@ -284,24 +291,71 @@
 
   function atualizarUI(){if(!isANTT)return;var c=document.getElementById('omega-bridge-connect'),p=document.getElementById('omega-bridge-pause'),s=document.getElementById('omega-bridge-stop');if(!c)return;if(connected){c.style.display='none';p.style.display='block';p.textContent='Pausar';p.className='om-btn om-btn-amber om-btn-sm';s.style.display='block';}else if(paused){c.style.display='none';p.style.display='block';p.textContent='Continuar';p.className='om-btn om-btn-green om-btn-sm';s.style.display='block';}else{c.style.display='block';p.style.display='none';s.style.display=VPS_URL?'block':'none';}}
 
-  // FIX: ROTEAMENTO DO LOGIN GOV.BR RESTAURADO
   function receberTarefa(msg){
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     var U = window.OmegaUtils || null;
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
     
-    // Se a tarefa veio com Login/Senha da conta GOV
     if(msg.credenciais && msg.credenciais.cpf && msg.credenciais.senha){
       if(isANTT){ executarFluxo(msg); return; }
       salvarEstado('login_govbr',msg);
       processarLoginGovBr();
       return;
     }
-    
-    // Se veio vazia (já logado)
     executarFluxo(msg);
   }
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; }
+
+  // ══════════════════════════════════════════════════════════════
+  // MÁQUINA DE ESTADOS GOV.BR
+  // ══════════════════════════════════════════════════════════════
+  async function processarLoginGovBr(){
+    var estado=lerEstado();if(!estado||estado.estado!=='login_govbr')return;
+    var cred=estado.dados.credenciais||{};if(!cred.cpf||!cred.senha)return;
+    await delay(1000); 
+    try {
+        var btnAuth = document.querySelector('button[name="user_oauth_approval"][value="true"]');
+        var btnSkipMfa = document.querySelector('button[value="confirm-skip-mandatory-mfa"]');
+        var senhaF = document.getElementById('password');
+        var cpfF = document.getElementById('accountId');
+
+        if(btnAuth) { log('OAuth — autorizando...','ok'); btnAuth.click(); return; }
+
+        if(btnSkipMfa) {
+            log('MFA — pulando...','warn'); btnSkipMfa.click(); await delay(1000);
+            var cb = document.getElementById('confirmSkipMandatoryMfaCheckBox');
+            if(cb){ cb.checked=true; cb.click(); cb.dispatchEvent(new Event('change',{bubbles:true})); await delay(500); }
+            var bConf = document.getElementById('confirmSkipMandatoryMfaButton');
+            if(bConf) bConf.click();
+            return;
+        }
+
+        if(senhaF) {
+            log('Tela Senha detectada','ok'); senhaF.focus();
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(senhaF, cred.senha);
+            senhaF.dispatchEvent(new Event('input', {bubbles: true}));
+            senhaF.dispatchEvent(new Event('change', {bubbles: true}));
+            await delay(500);
+            var btnE = document.getElementById('submit-button');
+            if(btnE){ btnE.removeAttribute('disabled'); btnE.click(); }
+            return;
+        }
+
+        if(cpfF) {
+            log('Tela CPF detectada','ok');
+            await digitarMascara(cpfF, cred.cpf.replace(/\D/g,''), 60); await delay(500);
+            var btnC = document.getElementById('enter-account-id');
+            if(btnC) btnC.click();
+            return;
+        }
+
+        if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
+            log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
+            enviarStatus('error','Captcha detectado. Resolva manualmente.');
+        }
+    }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
+  }
 
   // ══════════════════════════════════════════════════════════════
   // ROTEADOR CENTRAL E EXECUÇÃO
@@ -341,11 +395,10 @@
       
       var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorTac_Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
       
-      // FIX: ROTEAMENTO DA INCLUSAO DENTRO DA PAGINA DO PEDIDO
       if (isFormulario) {
           if (task.modo === 'cadcpf' || (task.modo === 'cadastro' && task.tipo !== 'cnpj')) { await fluxoCadastroCPF(task); }
           else if (task.modo === 'cadcnpj' || (task.modo === 'cadastro' && task.tipo === 'cnpj')) { await fluxoCadastroCNPJ(task); }
-          else if (task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') { await processarVeiculos(task); } // Faltava esta linha!
+          else if (task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') { await processarVeiculos(task); } 
           return;
       }
 
@@ -571,7 +624,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar();
+        await aguardarModalFechar('Endereco');
     }
   }
 
@@ -611,7 +664,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar();
+        await aguardarModalFechar('Contato');
     }
     return true;
   }
@@ -659,7 +712,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar();
+        await aguardarModalFechar('Socio');
     }
   }
 
@@ -695,7 +748,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar();
+        await aguardarModalFechar('RT');
     }
   }
 
@@ -747,16 +800,23 @@
     await delay(1000); 
     
     var waitLimit = 0;
-    while(waitLimit < 30) {
+    var erroBusca = null;
+    while(waitLimit < 40) {
         var bbs = document.querySelectorAll('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
         var clicouAlgum = false;
         for (var idx=0; idx<bbs.length; idx++) {
             if (bbs[idx].offsetParent !== null) { bbs[idx].click(); clicouAlgum = true; await delay(1500); }
         }
+
+        var errEl = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors');
+        if (errEl && errEl.innerText.trim() !== '') { erroBusca = errEl.innerText.trim().replace(/\s+/g, ' '); break; }
+
         var tara = getVisible('#Tara'); var eixos = getVisible('#Eixos'); var uiBlock = document.querySelector('.blockUI');
         if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) { break; }
-        await delay(1000); waitLimit++;
+        await delay(500); waitLimit++;
     }
+
+    if (erroBusca) throw new Error('Falha na verificacao: ' + erroBusca);
 
     var taraEl = getVisible('#Tara');
     if(taraEl && (!taraEl.value || taraEl.value.trim() === '')) {
@@ -773,16 +833,45 @@
     }
     await delay(500);
 
-    var bs = getVisible('.btn-salvar-veiculo, .btn-confirmar-inclusao');
-    if(bs){ bs.removeAttribute('disabled'); bs.click(); log('Salvo: '+placa,'ok'); } 
-    else { throw new Error('Botao salvar nao encontrado'); }
+    // Espera a poeira dos modais de confirmação abaixar
+    var mWait = 0;
+    while(getVisible('.bootbox, .modal-dialog') && mWait < 10) { await delay(300); mWait++; }
+
+    // 🛡️ O CLIQUE DE SNIPER 2.0: Foco EXCLUSIVO no botão real da página
+    var bs = getVisible('.btn-salvar-veiculo');
+    if(!bs) bs = getVisible('[data-action*="Veiculo/Salvar"], .btn-confirmar-inclusao');
+
+    if(bs){ 
+        var wWait = 0;
+        while(bs.hasAttribute('disabled') && wWait < 20) { await delay(250); wWait++; }
+        
+        try { bs.scrollIntoView({block: "center"}); } catch(e){}
+        await delay(300);
+
+        bs.removeAttribute('disabled'); 
+        bs.click(); 
+        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(bs).trigger('click');
+        log('Salvo: '+placa,'ok'); 
+
+        // Aguarda o processamento AJAX do veículo
+        await delay(500);
+        await waitBlockUI(15000);
+        await delay(500);
+
+        var errPos = getVisible('.alert-danger, .validation-summary-errors');
+        if (errPos && errPos.innerText.trim() !== '') {
+            throw new Error('Erro da ANTT ao salvar placa: ' + errPos.innerText.trim().replace(/\s+/g, ' '));
+        }
+    } 
+    else { throw new Error('Botao salvar veiculo (.btn-salvar-veiculo) nao encontrado no DOM.'); }
 
     await delay(1000);
     var bbFinal = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
     if(bbFinal) { bbFinal.click(); await delay(1500); }
 
     await waitBlockUI(10000); 
-    await aguardarModalFechar();
+    // Como a tela de Veiculo não é um modal em algumas telas, aguardarModalFechar passa direto sem travar.
+    await aguardarModalFechar('Veiculo');
   }
 
   async function processarVeiculos(task){
@@ -829,7 +918,6 @@
     for(var i=0; i<20; i++){
         formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
         if(formAberto) break;
-        // FIX: BUSCADOR DE BOTÕES MAIS INTELIGENTE
         btnCriar = getVisible('#btnCriarPedido, button[type="submit"], .btn-primary, a.btn-blue');
         if (!btnCriar) {
             var btns = document.querySelectorAll('button, a.btn');
