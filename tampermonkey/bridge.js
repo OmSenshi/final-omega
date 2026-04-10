@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v14.4 (Sunshine Ultimate Fix)
-// Restored fluxoArrendamento, Bootbox Ghost Fix, Exact Button Sniper
+// bridge.js — Final Omega v14.5 (Sunshine Ultimate Fix)
+// Global Toast Error Catcher, Mask Rejection Guardian
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -105,19 +105,32 @@
       document.querySelectorAll('#toast-container, .toast, .toast-success, .toast-error, .toast-warning').forEach(function(t){ t.remove(); });
   }
 
+  // 🛡️ O CÃO DE GUARDA: Agora também rastreia Toasts Globais
   async function aguardarModalFechar(contexto) {
       await delay(500);
       var limit = 0;
       while (getVisible('.modal.show, .modal.in') && limit < 50) { 
+          // Rastreia toasts de erro globais durante o fechamento
+          var toastErr = getVisible('#toast-container .toast-error');
+          if(toastErr) {
+              var msgT = toastErr.textContent.trim().replace(/\s+/g, ' ');
+              var closeBtnT = getVisible('.modal.show .close, .modal.show [data-dismiss="modal"]');
+              if (closeBtnT) closeBtnT.click();
+              limparToasts();
+              throw new Error('Falha no ' + (contexto||'Modal') + ': ' + msgT);
+          }
           await delay(200); limit++;
       }
-      if (getVisible('.modal.show, .modal.in')) {
-          var err = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, .modal.show .field-validation-error');
-          var msg = err ? err.textContent.trim().replace(/\s+/g, ' ') : 'O site travou ou ignorou o salvamento.';
+      
+      var errGeral = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, .modal.show .field-validation-error, #toast-container .toast-error');
+      if (getVisible('.modal.show, .modal.in') || errGeral) {
+          var msg = errGeral ? errGeral.textContent.trim().replace(/\s+/g, ' ') : 'O site travou ou ignorou o salvamento.';
           var closeBtn = getVisible('.modal.show .close, .modal.show [data-dismiss="modal"]');
           if (closeBtn) closeBtn.click(); 
+          limparToasts();
           throw new Error('Falha no ' + (contexto||'Modal') + ': ' + msg); 
       }
+      
       limparToasts();
       await delay(300);
   }
@@ -176,7 +189,7 @@
 
   function resetBackoff(){reconnectDelay=RECONNECT_BASE;} function nextBackoff(){reconnectDelay=Math.min(reconnectDelay*2,RECONNECT_MAX);}
   function log(msg,tipo){var now=new Date();var ts=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');logs.push({ts:ts,msg:msg,tipo:tipo||'ok'});if(logs.length>MAX_LOGS)logs.shift();console.log('[BRIDGE '+ts+'] '+msg);renderLogs();}
-  function renderLogs(){if(!isANTT)return;var el=document.getElementById('omega-bridge-log');if(!el)return;el.innerHTML=logs.map(function(l){var c=l.tipo==='err'?'om-log-err':l.tipo==='warn'?'om-log-warn':'om-log-ok';return'<span style="color">'+l.ts+'</span> <span class="'+c+'">'+l.msg+'</span>';}).join('<br>');if(el)el.scrollTop=el.scrollHeight;}
+  function renderLogs(){if(!isANTT)return;var el=document.getElementById('omega-bridge-log');if(!el)return;el.innerHTML=logs.map(function(l){var c=l.tipo==='err'?'om-log-err':l.tipo==='warn'?'om-log-warn':'om-log-ok';return'<span style="color:#555e70">'+l.ts+'</span> <span class="'+c+'">'+l.msg+'</span>';}).join('<br>');if(el)el.scrollTop=el.scrollHeight;}
 
   async function requestWakeLock(){try{if('wakeLock' in navigator){wakeLockSentinel=await navigator.wakeLock.request('screen');}}catch(e){}}
   function releaseWakeLock(){if(wakeLockSentinel){try{wakeLockSentinel.release();}catch(e){}wakeLockSentinel=null;}}
@@ -773,7 +786,6 @@
   // ══════════════════════════════════════════════════════════════
 
   async function processarInclusaoVeiculo(placa,renavam){
-    var U = window.OmegaUtils || null;
     log('Incluindo: '+placa,'ok');enviarStatus('running','Incluindo '+placa,{step:'veiculo'});
     var btnN = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
     if(!btnN)throw new Error('Botao veiculo nao encontrado');
@@ -786,6 +798,14 @@
     var pLimpa = placa.replace(/[^A-Z0-9]/gi,'').toUpperCase();
     await digitarMascara(cp, pLimpa, 80);
     cp.dispatchEvent(new Event('blur',{bubbles:true}));
+
+    // 🛡️ O GUARDIÃO DE MÁSCARAS (Anti-Limpeza)
+    await delay(300);
+    if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
+        var closeBtn = getVisible('.modal.show .close, [data-dismiss="modal"]');
+        if(closeBtn) closeBtn.click();
+        throw new Error('A ANTT rejeitou a Placa ' + pLimpa + '. Verifique se digitou letra "O" no lugar de zero.');
+    }
 
     var cr=getVisible('#Renavam');
     if(cr) {
@@ -809,8 +829,15 @@
             if (bbs[idx].offsetParent !== null) { bbs[idx].click(); clicouAlgum = true; await delay(1500); }
         }
 
-        var errEl = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors');
-        if (errEl && errEl.innerText.trim() !== '') { erroBusca = errEl.innerText.trim().replace(/\s+/g, ' '); break; }
+        // 🛡️ CAÇADOR DE TOASTS GLOBAIS TAMBÉM VIGIA AQUI
+        var errEl = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, #toast-container .toast-error');
+        if (errEl && errEl.textContent.trim() !== '') { 
+            erroBusca = errEl.textContent.trim().replace(/\s+/g, ' '); 
+            var closeErrBtn = getVisible('.modal.show .close, [data-dismiss="modal"]');
+            if(closeErrBtn) closeErrBtn.click();
+            limparToasts();
+            break; 
+        }
 
         var tara = getVisible('#Tara'); var eixos = getVisible('#Eixos'); var uiBlock = document.querySelector('.blockUI');
         if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) { break; }
@@ -856,9 +883,12 @@
         await waitBlockUI(15000);
         await delay(500);
 
-        var errPos = getVisible('.alert-danger, .validation-summary-errors');
-        if (errPos && errPos.innerText.trim() !== '') {
-            throw new Error('Erro da ANTT ao salvar placa: ' + errPos.innerText.trim().replace(/\s+/g, ' '));
+        var errPos = getVisible('.alert-danger, .validation-summary-errors, #toast-container .toast-error');
+        if (errPos && errPos.textContent.trim() !== '') {
+            var closeErrBtn2 = getVisible('.modal.show .close, [data-dismiss="modal"]');
+            if(closeErrBtn2) closeErrBtn2.click();
+            limparToasts();
+            throw new Error('Erro ao salvar placa: ' + errPos.textContent.trim().replace(/\s+/g, ' '));
         }
     } 
     else { throw new Error('Botao salvar veiculo (.btn-salvar-veiculo) nao encontrado no DOM.'); }
@@ -1030,6 +1060,12 @@
         var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
         await digitarMascara(cp, pLimpa, 80);
         cp.dispatchEvent(new Event('blur',{bubbles:true}));
+
+        // 🛡️ O GUARDIÃO DE MÁSCARAS (Anti-Limpeza)
+        await delay(300);
+        if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
+            throw new Error('A ANTT rejeitou a Placa ' + pLimpa + '. Verifique se digitou letra "O" no lugar de zero.');
+        }
     }
     await delay(300);
 
