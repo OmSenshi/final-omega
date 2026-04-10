@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v14.5 (Sunshine Ultimate Fix)
-// Global Toast Error Catcher, Mask Rejection Guardian
+// bridge.js — Final Omega v14.6 (Sunshine Ultimate Fix - Full Restored)
+// Complete Code: Modal Sync, Mask Check, Global Toast Catcher, All Flows Intact
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -105,12 +105,10 @@
       document.querySelectorAll('#toast-container, .toast, .toast-success, .toast-error, .toast-warning').forEach(function(t){ t.remove(); });
   }
 
-  // 🛡️ O CÃO DE GUARDA: Agora também rastreia Toasts Globais
   async function aguardarModalFechar(contexto) {
       await delay(500);
       var limit = 0;
       while (getVisible('.modal.show, .modal.in') && limit < 50) { 
-          // Rastreia toasts de erro globais durante o fechamento
           var toastErr = getVisible('#toast-container .toast-error');
           if(toastErr) {
               var msgT = toastErr.textContent.trim().replace(/\s+/g, ' ');
@@ -799,7 +797,7 @@
     await digitarMascara(cp, pLimpa, 80);
     cp.dispatchEvent(new Event('blur',{bubbles:true}));
 
-    // 🛡️ O GUARDIÃO DE MÁSCARAS (Anti-Limpeza)
+    // 🛡️ O GUARDIÃO DE MÁSCARAS
     await delay(300);
     if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
         var closeBtn = getVisible('.modal.show .close, [data-dismiss="modal"]');
@@ -829,7 +827,6 @@
             if (bbs[idx].offsetParent !== null) { bbs[idx].click(); clicouAlgum = true; await delay(1500); }
         }
 
-        // 🛡️ CAÇADOR DE TOASTS GLOBAIS TAMBÉM VIGIA AQUI
         var errEl = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, #toast-container .toast-error');
         if (errEl && errEl.textContent.trim() !== '') { 
             erroBusca = errEl.textContent.trim().replace(/\s+/g, ' '); 
@@ -989,8 +986,72 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // FLUXO DE ARRENDAMENTO (Restauração Completa)
+  // OS FLUXOS PRINCIPAIS
   // ══════════════════════════════════════════════════════════════
+  async function fluxoCadastroCPF(task){
+    enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
+    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
+    var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
+    await delay(1500); 
+    if(idf){
+        idf.removeAttribute('disabled');
+        var num = (d.identidade||d.cnh||'000000').replace(/[^0-9a-zA-Z]/g,'');
+        if(!num) num = '000000';
+        await digitarMascara(idf, num, 60);
+        idf.dispatchEvent(new Event('blur',{bubbles:true}));
+        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(idf).trigger('blur');
+        await delay(1500);
+    }
+    var oe = getVisible('#OrgaoEmissor, #TransportadorTac_OrgaoEmissor, input[name*="OrgaoEmissor"], select[name*="OrgaoEmissor"]');
+    if(oe){ oe.value='SSP'; oe.dispatchEvent(new Event('change',{bubbles:true})); var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(oe).trigger('change'); }
+    await delay(500);
+    if(d.uf){
+        var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
+        if(uf){
+            var targetUf = d.uf.replace(/[^A-Za-z]/g, '').toUpperCase();
+            for(var i=0; i<uf.options.length; i++){
+                if(uf.options[i].value.toUpperCase() === targetUf){
+                    uf.selectedIndex = i; uf.value = uf.options[i].value; uf.dispatchEvent(new Event('change',{bubbles:true}));
+                    var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(uf).trigger('change'); break;
+                }
+            }
+        }
+    }
+    await delay(1000);
+    await preencherEndereco(d, 'RES'); 
+    if (paused) return;
+    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
+    if (paused) return;
+    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
+    if (paused) return;
+    await processarVeiculos(task);
+  }
+
+  async function fluxoCadastroCNPJ(task){
+    enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
+    var tabTransp = getVisible('a[href="#transportador"], a.transportador');
+    if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
+    var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
+    if(cap){
+        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; 
+        if(jq) { jq(cap).iCheck('check'); jq(cap).trigger('change'); } 
+        else { cap.checked = true; cap.dispatchEvent(new Event('change',{bubbles:true})); cap.dispatchEvent(new Event('click',{bubbles:true})); }
+    }
+    await preencherEndereco(d, 'COM');
+    if (paused) return;
+    var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
+    if (paused) return;
+    var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
+    if (paused) return;
+    var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; 
+    if(cpfSocio) await preencherGestor(cpfSocio.replace(/\D/g,''));
+    if (paused) return;
+    await preencherRT(); 
+    if (paused) return;
+    await processarVeiculos(task);
+  }
+
   async function fluxoArrendamento(task){
     enviarStatus('running','Arrendamento',{step:'arrendamento'}); var arr=task.arrendamento||task;
     var U = window.OmegaUtils || null;
@@ -1061,7 +1122,6 @@
         await digitarMascara(cp, pLimpa, 80);
         cp.dispatchEvent(new Event('blur',{bubbles:true}));
 
-        // 🛡️ O GUARDIÃO DE MÁSCARAS (Anti-Limpeza)
         await delay(300);
         if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
             throw new Error('A ANTT rejeitou a Placa ' + pLimpa + '. Verifique se digitou letra "O" no lugar de zero.');
