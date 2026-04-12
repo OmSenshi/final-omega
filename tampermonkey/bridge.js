@@ -1,5 +1,5 @@
-// bridge.js — Final Omega v14.6 (Sunshine Ultimate Fix - Full Restored)
-// Complete Code: Modal Sync, Mask Check, Global Toast Catcher, All Flows Intact
+// bridge.js — Final Omega v14.0 (Sunshine Ultimate Edition)
+// Mutation Observer ViaCEP, Phantom Char Vaccine, Native Mask Typing
 (function(){
   var isANTT = location.hostname.indexOf('rntrcdigital.antt.gov.br') !== -1;
   var isGovBr = location.hostname.indexOf('acesso.gov.br') !== -1;
@@ -105,37 +105,20 @@
       document.querySelectorAll('#toast-container, .toast, .toast-success, .toast-error, .toast-warning').forEach(function(t){ t.remove(); });
   }
 
-  async function aguardarModalFechar(contexto) {
-      await delay(500);
+  async function aguardarModalFechar() {
+      await delay(200);
       var limit = 0;
       while (getVisible('.modal.show, .modal.in') && limit < 50) { 
-          var toastErr = getVisible('#toast-container .toast-error');
-          if(toastErr) {
-              var msgT = toastErr.textContent.trim().replace(/\s+/g, ' ');
-              var closeBtnT = getVisible('.modal.show .close, .modal.show [data-dismiss="modal"]');
-              if (closeBtnT) closeBtnT.click();
-              limparToasts();
-              throw new Error('Falha no ' + (contexto||'Modal') + ': ' + msgT);
-          }
           await delay(200); limit++;
       }
-      
-      var errGeral = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, .modal.show .field-validation-error, #toast-container .toast-error');
-      if (getVisible('.modal.show, .modal.in') || errGeral) {
-          var msg = errGeral ? errGeral.textContent.trim().replace(/\s+/g, ' ') : 'O site travou ou ignorou o salvamento.';
-          var closeBtn = getVisible('.modal.show .close, .modal.show [data-dismiss="modal"]');
-          if (closeBtn) closeBtn.click(); 
-          limparToasts();
-          throw new Error('Falha no ' + (contexto||'Modal') + ': ' + msg); 
-      }
-      
       limparToasts();
       await delay(300);
   }
 
+  // DIGITAÇÃO NATIVA BLINDADA CONTRA CARACTERES FANTASMAS
   async function digitarMascara(el, texto, speed) {
       var U_local = window.OmegaUtils || null;
-      var cleanTexto = (texto || '').replace(/[\u200B-\u200D\uFEFF]/g, ''); 
+      var cleanTexto = (texto || '').replace(/[\u200B-\u200D\uFEFF]/g, ''); // Arranca espaços invisíveis
       if (U_local && U_local.digitarCharAChar) {
           await new Promise(function(resolve) { U_local.digitarCharAChar(el, cleanTexto, {delay: speed || 60, onDone: resolve}); });
       } else {
@@ -306,13 +289,6 @@
     currentTask=msg;requestWakeLock();enviarStatus('running','Tarefa: '+msg.modo);
     var U = window.OmegaUtils || null;
     if(U)U.box(document.getElementById('omega-bridge-task'),true,'Tarefa: <b>'+(msg.modo||'?')+'</b>');
-    
-    if(msg.credenciais && msg.credenciais.cpf && msg.credenciais.senha){
-      if(isANTT){ executarFluxo(msg); return; }
-      salvarEstado('login_govbr',msg);
-      processarLoginGovBr();
-      return;
-    }
     executarFluxo(msg);
   }
   if (typeof unsafeWindow !== 'undefined') { unsafeWindow.OmegaStartLocalTask = receberTarefa; }
@@ -364,6 +340,17 @@
         if(document.querySelector('.h-captcha') || document.querySelector('.g-recaptcha')){
             log('Captcha detectado','warn'); salvarEstado('aguardando_captcha',estado.dados);
             enviarStatus('error','Captcha detectado. Resolva manualmente.');
+            return;
+        }
+
+        // ── DETECÇÃO: Verificação em duas etapas OBRIGATÓRIA (código do app) ──
+        var otpInput = document.getElementById('otpInput');
+        var twoFactorForm = document.getElementById('twoFactorForm');
+        if(otpInput || twoFactorForm || (document.body.textContent||'').indexOf('Verificação em duas etapas') !== -1){
+            log('2FA obrigatorio detectado — ABORTANDO','err');
+            limparEstado();
+            enviarStatus('erro_fatal','🔐 Verificacao em duas etapas habilitada. O cliente possui codigo de acesso ativo no app Gov-br. Impossivel prosseguir automaticamente.',{detalhes:{dataHora:new Date().toLocaleString('pt-BR'),situacao:'2FA Obrigatorio',usuario:cred.cpf||'?',nome:'Cliente com 2FA',entidade:'Gov-br'}});
+            return;
         }
     }catch(e){ log('Erro login: '+e.message,'err'); enviarStatus('error','Login: '+e.message); }
   }
@@ -379,6 +366,35 @@
       log('Processando Fluxo: ' + task.modo, 'ok');
 
       await delay(2000);
+
+      // ══════════════════════════════════════════════════════════════
+      // DETECÇÃO DE ERROS FATAIS DA ANTT (antes de qualquer fluxo)
+      // ══════════════════════════════════════════════════════════════
+      var bodyText = (document.body.textContent || document.body.innerText || '').replace(/\s+/g,' ');
+
+      // 1. Sem permissão (Selo Bronze ou colaborador não cadastrado)
+      if(bodyText.indexOf('não tem permissão para acessar') !== -1 || bodyText.indexOf('nao tem permissao para acessar') !== -1){
+        log('SEM PERMISSAO detectado','err');
+        limparEstado();
+        enviarStatus('erro_fatal','🚫 Sem permissao para acessar a pagina. Possivel Selo Bronze, colaborador nao cadastrado ou sistema fora do ar.',{detalhes:{dataHora:new Date().toLocaleString('pt-BR'),situacao:'Sem Permissao',usuario:(task.credenciais&&task.credenciais.cpf)||'?',nome:'Acesso negado pela ANTT',entidade:'RNTRC Digital'}});
+        return;
+      }
+
+      // 2. Sistema fora do ar (erro interno / exception)
+      if(bodyText.indexOf('Pedimos desculpas pelo transtorno') !== -1 || bodyText.indexOf('Value cannot be null') !== -1 || bodyText.indexOf('erro interno durante o processamento') !== -1){
+        log('SISTEMA FORA DO AR detectado','err');
+        limparEstado();
+        enviarStatus('erro_fatal','⚠️ O sistema da ANTT esta provavelmente fora do ar. Tente novamente em alguns minutos.',{detalhes:{dataHora:new Date().toLocaleString('pt-BR'),situacao:'Sistema Fora do Ar',usuario:(task.credenciais&&task.credenciais.cpf)||'?',nome:'Erro interno ANTT',entidade:'RNTRC Digital'}});
+        return;
+      }
+
+      // 3. Erro genérico do SCA (gravar dados do usuário)
+      if(bodyText.indexOf('Erro ao gravar dados') !== -1){
+        log('ERRO SCA detectado','err');
+        limparEstado();
+        enviarStatus('erro_fatal','⚠️ Erro ao gravar dados do usuario no SCA. O sistema pode estar instavel. Tente novamente.',{detalhes:{dataHora:new Date().toLocaleString('pt-BR'),situacao:'Erro SCA',usuario:(task.credenciais&&task.credenciais.cpf)||'?',nome:'Falha interna SCA',entidade:'RNTRC Digital'}});
+        return;
+      }
 
       if (url.indexOf('Home/ExibirTermo') !== -1) {
           enviarStatus('running', 'Aceitando termo de uso...', {step: 'termo'});
@@ -405,11 +421,9 @@
       }
       
       var isFormulario = document.getElementById('Identidade') || document.getElementById('TransportadorTac_Identidade') || document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira') || (url.indexOf('/Pedido/') !== -1 && url.indexOf('AcompanharPedidos') === -1);
-      
       if (isFormulario) {
           if (task.modo === 'cadcpf' || (task.modo === 'cadastro' && task.tipo !== 'cnpj')) { await fluxoCadastroCPF(task); }
           else if (task.modo === 'cadcnpj' || (task.modo === 'cadastro' && task.tipo === 'cnpj')) { await fluxoCadastroCNPJ(task); }
-          else if (task.modo === 'inclusao' || task.modo === 'inclusao_avulsa') { await processarVeiculos(task); } 
           return;
       }
 
@@ -442,7 +456,7 @@
   function pararTarefa(){currentTask=null;releaseWakeLock();limparEstado();if(U)U.box(document.getElementById('omega-bridge-task'),false,'Cancelada.');enviarStatus('idle','Cancelada');}
 
   // ══════════════════════════════════════════════════════════════
-  // MÁQUINA DE RESGATE E INÍCIO DE PEDIDO
+  // MÁQUINA DE RESGATE
   // ══════════════════════════════════════════════════════════════
   async function executarResgateNaPagina(cpfCnpj, task) {
     try {
@@ -500,8 +514,8 @@
           await delay(1500);
           var btnCriar = document.getElementById('btnCriarPedido') || document.querySelector('.btn-primary') || document.querySelector('button[type="submit"]');
           if(!btnCriar) {
-              var btns = document.querySelectorAll('button, a.btn');
-              for(var b=0; b<btns.length; b++) { if(btns[b].textContent.indexOf('Criar Pedido') !== -1 || btns[b].textContent.indexOf('Novo') !== -1) { btnCriar = btns[b]; break; } }
+              var btns = document.querySelectorAll('button');
+              for(var b=0; b<btns.length; b++) { if(btns[b].textContent.indexOf('Criar Pedido') !== -1) { btnCriar = btns[b]; break; } }
           }
           if(btnCriar) {
               salvarEstado('tarefa_pendente_navegacao', task);
@@ -553,6 +567,7 @@
     var cf = await waitForVisible('#Cep, input[name*="Cep"]', 10000);
     await delay(1500); 
 
+    // O RADAR INSTANTANEO DO VIACEP (Mutation Observer)
     async function esperarViaCEP() {
         return new Promise(function(resolve) {
             var blkAppeared = false;
@@ -571,6 +586,7 @@
             });
             obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
             
+            // Trava extra para conexoes relampago
             nativeSetTimeout(function(){
                 var cid = document.getElementById('DescricaoCidade');
                 var blk = document.querySelector('.blockUI');
@@ -593,9 +609,9 @@
                 var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(cf).trigger('blur');
             }
             
-            await delay(300);
+            await delay(300); // Tempo para o AJAX iniciar
             await esperarViaCEP();
-            await delay(500); 
+            await delay(500); // Respiro de estabilizacao do DOM
         }
     }
 
@@ -635,7 +651,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar('Endereco');
+        await aguardarModalFechar();
     }
   }
 
@@ -675,7 +691,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar('Contato');
+        await aguardarModalFechar();
     }
     return true;
   }
@@ -723,7 +739,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar('Socio');
+        await aguardarModalFechar();
     }
   }
 
@@ -759,7 +775,7 @@
     if(bs){ 
         bs.removeAttribute('disabled'); bs.click(); 
         await waitBlockUI(10000); 
-        await aguardarModalFechar('RT');
+        await aguardarModalFechar();
     }
   }
 
@@ -797,14 +813,6 @@
     await digitarMascara(cp, pLimpa, 80);
     cp.dispatchEvent(new Event('blur',{bubbles:true}));
 
-    // 🛡️ O GUARDIÃO DE MÁSCARAS
-    await delay(300);
-    if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
-        var closeBtn = getVisible('.modal.show .close, [data-dismiss="modal"]');
-        if(closeBtn) closeBtn.click();
-        throw new Error('A ANTT rejeitou a Placa ' + pLimpa + '. Verifique se digitou letra "O" no lugar de zero.');
-    }
-
     var cr=getVisible('#Renavam');
     if(cr) {
         cr.removeAttribute('disabled'); cr.value=renavam;
@@ -819,29 +827,16 @@
     await delay(1000); 
     
     var waitLimit = 0;
-    var erroBusca = null;
-    while(waitLimit < 40) {
+    while(waitLimit < 30) {
         var bbs = document.querySelectorAll('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
         var clicouAlgum = false;
         for (var idx=0; idx<bbs.length; idx++) {
             if (bbs[idx].offsetParent !== null) { bbs[idx].click(); clicouAlgum = true; await delay(1500); }
         }
-
-        var errEl = getVisible('.modal.show .alert-danger, .modal.show .validation-summary-errors, #toast-container .toast-error');
-        if (errEl && errEl.textContent.trim() !== '') { 
-            erroBusca = errEl.textContent.trim().replace(/\s+/g, ' '); 
-            var closeErrBtn = getVisible('.modal.show .close, [data-dismiss="modal"]');
-            if(closeErrBtn) closeErrBtn.click();
-            limparToasts();
-            break; 
-        }
-
         var tara = getVisible('#Tara'); var eixos = getVisible('#Eixos'); var uiBlock = document.querySelector('.blockUI');
         if (!clicouAlgum && tara && !tara.hasAttribute('disabled') && eixos && !eixos.hasAttribute('disabled') && (!uiBlock || uiBlock.style.display === 'none')) { break; }
-        await delay(500); waitLimit++;
+        await delay(1000); waitLimit++;
     }
-
-    if (erroBusca) throw new Error('Falha na verificacao: ' + erroBusca);
 
     var taraEl = getVisible('#Tara');
     if(taraEl && (!taraEl.value || taraEl.value.trim() === '')) {
@@ -858,44 +853,16 @@
     }
     await delay(500);
 
-    var mWait = 0;
-    while(getVisible('.bootbox, .modal-dialog') && mWait < 10) { await delay(300); mWait++; }
-
-    var bs = getVisible('.btn-salvar-veiculo');
-    if(!bs) bs = getVisible('[data-action*="Veiculo/Salvar"], .btn-confirmar-inclusao');
-
-    if(bs){ 
-        var wWait = 0;
-        while(bs.hasAttribute('disabled') && wWait < 20) { await delay(250); wWait++; }
-        
-        try { bs.scrollIntoView({block: "center"}); } catch(e){}
-        await delay(300);
-
-        bs.removeAttribute('disabled'); 
-        bs.click(); 
-        var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(bs).trigger('click');
-        log('Salvo: '+placa,'ok'); 
-
-        await delay(500);
-        await waitBlockUI(15000);
-        await delay(500);
-
-        var errPos = getVisible('.alert-danger, .validation-summary-errors, #toast-container .toast-error');
-        if (errPos && errPos.textContent.trim() !== '') {
-            var closeErrBtn2 = getVisible('.modal.show .close, [data-dismiss="modal"]');
-            if(closeErrBtn2) closeErrBtn2.click();
-            limparToasts();
-            throw new Error('Erro ao salvar placa: ' + errPos.textContent.trim().replace(/\s+/g, ' '));
-        }
-    } 
-    else { throw new Error('Botao salvar veiculo (.btn-salvar-veiculo) nao encontrado no DOM.'); }
+    var bs = getVisible('.btn-salvar-veiculo, .btn-confirmar-inclusao');
+    if(bs){ bs.removeAttribute('disabled'); bs.click(); log('Salvo: '+placa,'ok'); } 
+    else { throw new Error('Botao salvar nao encontrado'); }
 
     await delay(1000);
     var bbFinal = getVisible('.bootbox-confirm button[data-bb-handler="confirm"], .btn-confirmar-exclusao');
     if(bbFinal) { bbFinal.click(); await delay(1500); }
 
     await waitBlockUI(10000); 
-    await aguardarModalFechar('Veiculo');
+    await aguardarModalFechar();
   }
 
   async function processarVeiculos(task){
@@ -942,15 +909,7 @@
     for(var i=0; i<20; i++){
         formAberto = getVisible('[data-action*="VeiculoPedido/Novo"], [data-action*="Veiculo/Novo"]');
         if(formAberto) break;
-        btnCriar = getVisible('#btnCriarPedido, button[type="submit"], .btn-primary, a.btn-blue');
-        if (!btnCriar) {
-            var btns = document.querySelectorAll('button, a.btn');
-            for(var b=0; b<btns.length; b++) {
-                if(btns[b].textContent.indexOf('Criar Pedido') !== -1 || btns[b].textContent.indexOf('Novo') !== -1 || btns[b].textContent.indexOf('Adicionar') !== -1) {
-                    if(btns[b].offsetParent !== null) { btnCriar = btns[b]; break; }
-                }
-            }
-        }
+        btnCriar = getVisible('#btnCriarPedido, button[type="submit"]');
         if(btnCriar) break;
         await delay(500);
     }
@@ -990,10 +949,13 @@
   // ══════════════════════════════════════════════════════════════
   async function fluxoCadastroCPF(task){
     enviarStatus('running','Dados CPF...',{step:'dados_cpf'}); var d=task.transportador||task;
+    
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
     if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
+
     var idf= await waitForVisible('#Identidade, #TransportadorTac_Identidade, input[name*="Identidade"]', 10000);
     await delay(1500); 
+
     if(idf){
         idf.removeAttribute('disabled');
         var num = (d.identidade||d.cnh||'000000').replace(/[^0-9a-zA-Z]/g,'');
@@ -1003,9 +965,11 @@
         var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(idf).trigger('blur');
         await delay(1500);
     }
+
     var oe = getVisible('#OrgaoEmissor, #TransportadorTac_OrgaoEmissor, input[name*="OrgaoEmissor"], select[name*="OrgaoEmissor"]');
     if(oe){ oe.value='SSP'; oe.dispatchEvent(new Event('change',{bubbles:true})); var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; if(jq) jq(oe).trigger('change'); }
     await delay(500);
+
     if(d.uf){
         var uf = getVisible('#UfIdentidade, #TransportadorTac_Uf, select[name*="Uf"]');
         if(uf){
@@ -1019,36 +983,46 @@
         }
     }
     await delay(1000);
+
     await preencherEndereco(d, 'RES'); 
     if (paused) return;
+
     var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
     if (paused) return;
     var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
     if (paused) return;
+
     await processarVeiculos(task);
   }
 
   async function fluxoCadastroCNPJ(task){
     enviarStatus('running','Dados CNPJ...',{step:'dados_cnpj'}); var d=task.transportador||task;
+    
     var tabTransp = getVisible('a[href="#transportador"], a.transportador');
     if(tabTransp && tabTransp.getAttribute('aria-selected') !== 'true') { tabTransp.click(); await delay(1000); }
+
     var cap = document.getElementById('TransportadorEtc_SituacaoCapacidadeFinanceira');
     if(cap){
         var jq = typeof unsafeWindow !== 'undefined' ? unsafeWindow.jQuery : window.jQuery; 
         if(jq) { jq(cap).iCheck('check'); jq(cap).trigger('change'); } 
         else { cap.checked = true; cap.dispatchEvent(new Event('change',{bubbles:true})); cap.dispatchEvent(new Event('click',{bubbles:true})); }
     }
+    
     await preencherEndereco(d, 'COM');
     if (paused) return;
+    
     var tel=d.telefone||'0000000000'; await adicionarContato('2',tel);
     if (paused) return;
     var email=d.email||gerarEmailAleatorio(); await adicionarContato('4',email);
     if (paused) return;
+    
     var cpfSocio=d.cpf_socio||(task.cnpj_data&&task.cnpj_data.cpf_socio)||''; 
     if(cpfSocio) await preencherGestor(cpfSocio.replace(/\D/g,''));
     if (paused) return;
+    
     await preencherRT(); 
     if (paused) return;
+
     await processarVeiculos(task);
   }
 
@@ -1121,11 +1095,6 @@
         var pLimpa = (arr.placa||'').replace(/[^A-Z0-9]/gi,'').toUpperCase();
         await digitarMascara(cp, pLimpa, 80);
         cp.dispatchEvent(new Event('blur',{bubbles:true}));
-
-        await delay(300);
-        if(cp.value.replace(/[^A-Z0-9]/gi,'').length < 7) {
-            throw new Error('A ANTT rejeitou a Placa ' + pLimpa + '. Verifique se digitou letra "O" no lugar de zero.');
-        }
     }
     await delay(300);
 
